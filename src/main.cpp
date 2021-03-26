@@ -32,7 +32,7 @@ int main(void) {
         new txr::Constant(Vec3f(0.75f, 0.75f, 0.75f))
     );
     mtl::Material* light = new mtl::Light(
-        new txr::Constant(Vec3f::ones)
+        new txr::Constant(Vec3f::ones * 3.0f)
     );
 
     // build the scene

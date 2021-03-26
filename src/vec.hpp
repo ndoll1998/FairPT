@@ -42,6 +42,8 @@ public:
     // arithmetic members
     inline Vec4f sqrt(void) const { return _mm_sqrt_ps(*this); }
     inline Vec4f dot(const Vec4f& other) const { return _mm_dp_ps(*this, other, 0xff); }
+    inline Vec4f min(const Vec4f& other) const { return _mm_min_ps(*this, other); }
+    inline Vec4f max(const Vec4f& other) const { return _mm_max_ps(*this, other); }
     inline Vec4f sum(void) const {
         __m128 tmp = _mm_hadd_ps(*this, *this);
         return _mm_hadd_ps(tmp, tmp);

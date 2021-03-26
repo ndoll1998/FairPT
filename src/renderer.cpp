@@ -42,8 +42,8 @@ void Renderer::build_init_cache(
                 // fill a 2x2 sub-pixel grid
                 // and add a noise term
                 size_t pi = k / 2 % 2, pj = k % 2;                
-                float su = (float)(i * 2 + pi) / (2 * height) - 0.5f;
-                float sv = (float)(j * 2 + pj) / (2 * width) - 0.5f;
+                float su = (float)(i * 2 + pi + rng::randf()) / (2 * height) - 0.5f;
+                float sv = (float)(j * 2 + pj + rng::randf()) / (2 * width) - 0.5f;
                 // build the ray with origin on the viewport
                 // and direction through the sub-pixel
                 Ray r = cam.build_ray_from_uv(su * vph, sv * vpw);
@@ -183,9 +183,10 @@ void Renderer::render(FrameBuffer& fb) {
             for (size_t k = 0; k < rpp; k++)
                 c = c + contrib_buffer[idx++].color;
             c = c / (float)rpp;
-            // apply simple approxiamtion of
-            // gamma correction filter and scale
-            // it over the full color range
+            // apply postprocessing including
+            // a simple approxiamtion of
+            // gamma correction filter
+            c = c.min(Vec3f::ones).max(Vec3f::zeros);
             c = c.sqrt() * 255.0f;
             // write the color to the framebuffer
             fb.set_pixel(i, j, c[0], c[1], c[2]);
