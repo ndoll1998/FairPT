@@ -1,9 +1,7 @@
 #include "./renderer.hpp"
 #include "./framebuffer.hpp"
+#include <rng.hpp>
 #include <math.h>
-
-#include <iostream>
-using namespace std;
 
 Renderer::Renderer(
     const Scene& scene,

@@ -2,9 +2,6 @@
 #include "./ray.hpp"
 #include <math.h>
 
-#include <iostream>
-using namespace std;
-
 void HitRecord4::update(const HitRecord4& other) {
     // take the records that are valid in
     // other and invalid in here
