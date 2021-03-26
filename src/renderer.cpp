@@ -40,10 +40,10 @@ void Renderer::build_init_cache(
                 // with the current primary ray
                 ContribInfo* c = contrib_buffer + (idx++);
                 // fill a 2x2 sub-pixel grid
-                // and add a noise term (TODO)
+                // and add a noise term
                 size_t pi = k / 2, pj = k % 2;                
-                float su = (float)(i * 2 + pi) / (2 * height) - 0.5f;
-                float sv = (float)(j * 2 + pj) / (2 * width) - 0.5f;
+                float su = (float)(i * 2 + pi + rng::randf()) / (2 * height) - 0.5f;
+                float sv = (float)(j * 2 + pj + rng::randf()) / (2 * width) - 0.5f;
                 // build the ray with origin on the viewport
                 // and direction through the sub-pixel
                 Ray r = cam.build_ray_from_uv(su * vph, sv * vpw);
