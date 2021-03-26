@@ -41,9 +41,9 @@ void Renderer::build_init_cache(
                 ContribInfo* c = contrib_buffer + (idx++);
                 // fill a 2x2 sub-pixel grid
                 // and add a noise term
-                size_t pi = k / 2, pj = k % 2;                
-                float su = (float)(i * 2 + pi + rng::randf()) / (2 * height) - 0.5f;
-                float sv = (float)(j * 2 + pj + rng::randf()) / (2 * width) - 0.5f;
+                size_t pi = k / 2 % 2, pj = k % 2;                
+                float su = (float)(i * 2 + pi) / (2 * height) - 0.5f;
+                float sv = (float)(j * 2 + pj) / (2 * width) - 0.5f;
                 // build the ray with origin on the viewport
                 // and direction through the sub-pixel
                 Ray r = cam.build_ray_from_uv(su * vph, sv * vpw);
@@ -97,9 +97,6 @@ void Renderer::flush_cache(void) {
                 }
             }
         }
-        // clear the bucket after 
-        // processing is finished
-        bucket.clear();
     }
 
 }

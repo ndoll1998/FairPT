@@ -61,7 +61,6 @@ public:
     );
     // functions to access some of the
     // basic vector properties
-    void clear(void);
     bool empty(void) const;
     size_t size(void) const; 
     // build a ray-packet of the

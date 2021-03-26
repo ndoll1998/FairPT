@@ -14,7 +14,6 @@ void RayBucket::push_back(
 }
 
 // basic vector operations
-void RayBucket::clear(void) { pairs.clear(); }
 bool RayBucket::empty(void) const { return pairs.empty(); }
 size_t RayBucket::size(void) const { return pairs.size(); }
 
