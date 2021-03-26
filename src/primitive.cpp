@@ -95,8 +95,8 @@ void Triangle::cast_packet(
     // build the fist mask that checks if
     // the ray is parallel to the triangle
     Vec4f mask1 = (a < Vec4f::neps) | (Vec4f::eps < a);
-    // compute the (approximative) inverse
-    Vec4f f = _mm_rcp_ps(a);
+    // compute the inverse
+    Vec4f f = Vec4f::ones / a; //_mm_rcp_ps(a);
     // compute the vector from the triangle
     // corner to the ray origin
     Vec4f sx = rays.x - Ax;
