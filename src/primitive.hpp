@@ -2,7 +2,7 @@
 #define H_PRIMITIVE
 
 // forward declarations
-struct Ray;
+struct Ray4;
 // includes
 #include <vector>
 #include "./vec.hpp"
@@ -20,6 +20,23 @@ typedef struct HitRecord {
     const mtl::Material* mat;   // surface material
 } HitRecord;
 
+// packet of hit records
+// storing up to 4 hitrecords
+typedef struct HitRecord4 {
+    Vec4f t;            // distances to intersection point
+    Vec4f px, py, pz;   // points of intersection
+    Vec4f nx, ny, nz;   // surface normals at intersection
+    Vec4f vx, vy, vz;   // directions of incident rays
+    Vec4f valids = Vec4f::zeros;    // which of the hits are valid
+    const mtl::Material* mats[4];    // surface materials
+    // update hitrecord, i.e. of each pair
+    // of hitrecords at the same index keep 
+    // the valid one with minimal distance
+    void update(const HitRecord4& other);
+    // separate the packet of hitrecords
+    // into array of single hitrecords
+    void split(HitRecord* records) const;
+} HitRecord4;
 
 /*
  *  Primitives
@@ -30,11 +47,12 @@ typedef struct HitRecord {
 // follow
 class Primitive {
 public:
-    // virtual function to cast a ray to
-    // the primitive and receive a hitrecord
-    virtual bool cast(
-        const Ray& r, 
-        HitRecord& h
+    // virtual function to cast a ray packet to
+    // the primitive and receive hitrecord for each
+    virtual void cast_packet(
+        const Ray4& rays, 
+        HitRecord4& records,
+        const size_t& n_valids
     ) const = 0;
     // build an axis-aligned bounding box
     // complete surrounding the primitive
@@ -49,9 +67,11 @@ private:
     // the three corner points
     // defining the triangle
     // in counter-clockwise order
-    Vec3f A, B, C;
+    Vec4f Ax, Ay, Az;
+    Vec4f Ux, Uy, Uz;
+    Vec4f Vx, Vy, Vz;
     // the normal of the triangle
-    Vec3f N;
+    Vec4f Nx, Ny, Nz;
 public:
     // constructor
     Triangle(
@@ -61,9 +81,10 @@ public:
         const mtl::Material* mat
     );
     // override cast function
-    virtual bool cast(
-        const Ray& r,
-        HitRecord& h
+    virtual void cast_packet(
+        const Ray4& rays,
+        HitRecord4& records,
+        const size_t& n_valids
     ) const;
 };
 
@@ -86,9 +107,10 @@ public:
     );
     // cast a ray to each primitive
     // of the primtive list iteratively
-    virtual bool cast(
-        const Ray& r,
-        HitRecord& h
+    virtual void cast_packet(
+        const Ray4& rays,
+        HitRecord4& records,
+        const size_t& n_valids
     ) const;
 };
 

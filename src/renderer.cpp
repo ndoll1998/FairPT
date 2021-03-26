@@ -2,6 +2,9 @@
 #include "./framebuffer.hpp"
 #include <math.h>
 
+#include <iostream>
+using namespace std;
+
 Renderer::Renderer(
     const Scene& scene,
     const Camera& cam,
@@ -37,7 +40,7 @@ void Renderer::build_init_cache(
                 // get a reference to the
                 // contribution info associated
                 // with the current primary ray
-                ContribInfo& c = contrib_buffer[idx++];
+                ContribInfo* c = contrib_buffer + (idx++);
                 // fill a 2x2 sub-pixel grid
                 // and add a noise term (TODO)
                 size_t pi = k / 2, pj = k % 2;                
@@ -68,22 +71,31 @@ void Renderer::flush_cache(void) {
         const PrimitiveList& prim_list = bvh.leaf_primitives(i);
         // cast all rays of the bucket to the
         // list of primitives
-        size_t length = bucket.size();
-        for (size_t i = 0; i < length; i++) {
+        while (!bucket.empty()) {
             // get the current ray-contrib pair
-            RayContribPair pair = bucket.pop();
-            ContribInfo& contrib = pair.contrib;
-            // cast the ray to the primitive list
-            HitRecord h;
-            if (prim_list.cast(pair.ray, h)) {
+            RayContribPacket packet = bucket.pop_packet();
+            // cast the packet against all the
+            // primitives in the list
+            HitRecord4 record_packet;
+            prim_list.cast_packet(packet.rays, record_packet, packet.n_valids);
+            // split the packet of hitrecords into
+            // single records for easier processing
+            HitRecord records[4];
+            record_packet.split(records);
+            // update all the hitrecords 
+            for (size_t k = 0; k < packet.n_valids; k++) {
+                // get a reference to the contribution
+                // info and the new hitrecord of the current ray
+                ContribInfo* contrib = packet.contribs[k];
+                HitRecord& h = records[k];
                 // update the hitrecord
-                if (contrib.hit_record.valid) {
+                if (contrib->hit_record.valid) {
                     // in case both hitrecords are valid
                     // keep the one with closer distance
-                    contrib.hit_record = (contrib.hit_record.t < h.t)? contrib.hit_record : h;
+                    contrib->hit_record = (contrib->hit_record.t < h.t)? contrib->hit_record : h;
                 } else {
                     // otherwise keep the one that is valid
-                    contrib.hit_record = h; 
+                    contrib->hit_record = h; 
                 }
             }
         }
@@ -102,8 +114,8 @@ void Renderer::build_next_cache(
     // and build all scatter rays
     for (size_t i = 0; i < buffer_length; i++) {
         // get the current contribution info
-        ContribInfo& contrib = contrib_buffer[i];
-        HitRecord& h = contrib.hit_record;
+        ContribInfo* contrib = contrib_buffer + i;
+        HitRecord& h = contrib->hit_record;
         // check if the hit record is valid, i.e.
         // if the corresponding ray hit anything
         if (h.valid) {
@@ -113,16 +125,15 @@ void Renderer::build_next_cache(
             Vec3f emit = h.mat->emittance(h);
             // update the color values
             // in the contribution buffer
-            contrib.color = contrib.color + contrib.albedo * emit;
-            contrib.albedo = contrib.albedo * att;
+            contrib->color = contrib->color + contrib->albedo * emit;
+            contrib->albedo = contrib->albedo * att;
             // create the scatter ray
             // from the hit record
             Ray scatter;
             if (h.mat->scatter(h, scatter)) {
                 // offset ray origin slightly to avoid 
                 // intersecting at the ray origin
-                // TODO: this can be done using one simd instruction
-                scatter.origin = scatter.origin + 1e-3 * scatter.direction;
+                scatter.origin = Vec3f::eps.fmadd(scatter.direction, scatter.origin);
                 // reset the hit record to
                 // reuse it for the scatter ray
                 h.valid = false; 

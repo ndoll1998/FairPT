@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -g -Wall -msse -msse2 -msse4.1 -O3
+CFLAGS = -g -Wall -msse -msse2 -msse4.1 -mfma -O3
 LFLAGS = -lpthread
 IFLAGS = -Iinclude
 

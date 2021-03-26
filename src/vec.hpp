@@ -2,7 +2,7 @@
 #define H_VEC3F
 
 #include <ostream>
-#include <nmmintrin.h>
+#include <immintrin.h>
 
 /*
  *  4-dimensional SIMD Vector
@@ -32,12 +32,26 @@ public:
     // easy access helpers
     inline float& operator[](const size_t& i) { return items[i]; }
     inline const float& operator[](const size_t& i) const { return items[i]; }
+    // masked take
+    inline Vec4f take(
+        const Vec4f& other,
+        const Vec4f& mask
+    ) const {
+        return _mm_blendv_ps(*this, other, mask);
+    }
     // arithmetic members
     inline Vec4f sqrt(void) const { return _mm_sqrt_ps(*this); }
     inline Vec4f dot(const Vec4f& other) const { return _mm_dp_ps(*this, other, 0xff); }
     inline Vec4f sum(void) const {
         __m128 tmp = _mm_hadd_ps(*this, *this);
         return _mm_hadd_ps(tmp, tmp);
+    }
+    // fused multiply-add operation
+    inline Vec4f fmadd(
+        const Vec4f& b,
+        const Vec4f& c
+    ) const {
+        return _mm_fmadd_ps(*this, b, c);
     }
     // cross product of the first three entries
     // but ignoring the last one
@@ -56,6 +70,8 @@ public:
     // common vectors
     static const Vec4f zeros;
     static const Vec4f ones;
+    static const Vec4f eps;
+    static const Vec4f neps;
 };
 
 // arithmetic operators
@@ -71,6 +87,9 @@ inline Vec4f operator+(const float& a, const Vec4f& b) { return _mm_add_ps(_mm_s
 inline Vec4f operator-(const float& a, const Vec4f& b) { return _mm_sub_ps(_mm_set1_ps(a), b); }
 inline Vec4f operator*(const float& a, const Vec4f& b) { return _mm_mul_ps(_mm_set1_ps(a), b); }
 inline Vec4f operator/(const float& a, const Vec4f& b) { return _mm_div_ps(_mm_set1_ps(a), b); }
+inline Vec4f operator<(const Vec4f& a, const Vec4f& b) { return _mm_cmple_ps(a, b); }
+inline Vec4f operator&(const Vec4f& a, const Vec4f& b) { return _mm_and_ps(a, b); }
+inline Vec4f operator|(const Vec4f& a, const Vec4f& b) { return _mm_or_ps(a, b); }
 // print operator
 inline std::ostream& operator<<(std::ostream& os, const Vec4f& v) {
     return os << "Vec4f(" << v[0] << ", " << v[1] << ", " << v[2] << ", " << v[3] << ")";
