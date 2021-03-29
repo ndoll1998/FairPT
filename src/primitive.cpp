@@ -2,54 +2,16 @@
 #include "./ray.hpp"
 #include <math.h>
 
-void HitRecord4::update(const HitRecord4& other) {
-    // take the records that are valid in
-    // other and invalid in here
-    // valid_mask = (~valids) & other.valids
-    Vec4f valid_mask = _mm_andnot_ps(valids, other.valids);
-    // where both records are valid
-    // keep the one with smaller distance value
-    Vec4f both_valid_mask = other.valids & valids;
-    Vec4f smaller_mask = (other.t < t) & both_valid_mask;
-    // compute final mask
-    Vec4f mask = valid_mask | smaller_mask;
-    // update distance values
-    t = t.take(other.t, mask);
-    // update positional values
-    px = px.take(other.px, mask);
-    py = py.take(other.py, mask);
-    pz = pz.take(other.pz, mask);
-    // update normal values
-    nx = nx.take(other.nx, mask);
-    ny = ny.take(other.ny, mask);
-    nz = nz.take(other.nz, mask);
-    // update incident direction values
-    vx = vx.take(other.vx, mask);
-    vy = vy.take(other.vy, mask);
-    vz = vz.take(other.vz, mask);
-    // update valids
-    valids = other.valids | valids;
-    // update materials
-    mats[0] = (mask[0])? other.mats[0] : mats[0];
-    mats[1] = (mask[1])? other.mats[1] : mats[1];
-    mats[2] = (mask[2])? other.mats[2] : mats[2];
-    mats[3] = (mask[3])? other.mats[3] : mats[3];
+// helper functions for packet vectors
+void cross(Vec4f result[3], const Vec4f a[3], const Vec4f b[3]) {
+    result[0] = (a[1] * b[2]) - (a[2] * b[1]);
+    result[1] = (a[2] * b[0]) - (a[0] * b[2]);
+    result[2] = (a[0] * b[1]) - (a[1] * b[0]);
 }
 
-void HitRecord4::split(HitRecord* records) const {
-    // separate the packet of hitrecords
-    // into single records
-    for (size_t i = 0; i < 4; i++) {
-        records[i] = {
-            t[i],
-            Vec3f(px[i], py[i], pz[i]),
-            Vec3f(nx[i], ny[i], nz[i]),
-            Vec3f(vx[i], vy[i], vz[i]),
-            std::isnan(valids[i]),
-            mats[i]
-        };
-    }
-};
+Vec4f dot(const Vec4f a[3], const Vec4f b[3]) {
+    return a[0].fmadd(b[0], a[1].fmadd(b[1], a[2] * b[2]));
+}
 
 /*
  *  Triangle Primitive
@@ -62,93 +24,152 @@ Triangle::Triangle(
     const mtl::Material* mat
 ) : 
     mat(mat),
-    Ax(A[0]), Ay(A[1]), Az(A[2])
-{
-    // compute edges of
-    // the triangle
-    Vec3f U = B - A;
-    Vec4f V = C - A;
-    // set the edge vectors
-    Ux = Vec4f(U[0]); Uy = Vec4f(U[1]); Uz = Vec4f(U[2]);    
-    Vx = Vec4f(V[0]); Vy = Vec4f(V[1]); Vz = Vec4f(V[2]);
-    // compute the normal vector
-    Vec3f N = U.cross(V).normalize();
-    Nx = Vec4f(N[0]); Ny = Vec4f(N[1]); Nz = Vec4f(N[2]);
+    A(A),
+    U(B - A),
+    V(C - A),
+    N(U.cross(V).normalize())
+{}
+
+bool Triangle::cast(
+    const Ray& r,
+    HitRecord& record
+) const {
+    // Müller-Trumbore intersection algorithm
+    // check if ray is parallel to triangle 
+    Vec3f h = r.direction.cross(V);
+    Vec3f a = U.dot(h);
+    if ((a[0] > -1e-3) && (a[0] < 1e-3)) { return false; }
+    // check if intersection is in 
+    // range of the first edge 
+    Vec3f f = Vec3f::ones/a;
+    Vec3f s = r.origin - A;
+    Vec3f u = f * s.dot(h);
+    // ray misses
+    if ((u[0] < 0.0f) || (u[0] > 1.0f)) { return false; }
+    // check if intersection is
+    // in range of both edges
+    Vec3f q = s.cross(U);
+    Vec3f v = f * r.direction.dot(q);
+    // ray misses
+    if ((v[0] < 0.0f) || (u[0] + v[0] > 1.0f)) { return false; }
+    // at this point we know that
+    // the ray does intersect the
+    // triangle so we can compute
+    // the distance 
+    Vec3f t = f * V.dot(q);
+    // triangle is behind the ray
+    if (t[0] < 1e-3) { return false; }
+    // compute the intersection point
+    Vec3f p = t.fmadd(r.direction, r.origin);
+    record = { t[0], p, N, r.direction, true, mat };
+    return true;
 }
 
-void Triangle::cast_packet(
-    const Ray4& rays,
-    HitRecord4& records,
-    const size_t& n_valids
+/*
+ *  Triangle Packet Primitive
+ */
+
+
+TrianglePacket::TrianglePacket(
+    const Triangle& T1,
+    const Triangle& T2,
+    const Triangle& T3,
+    const Triangle& T4
+) :
+    mats{ T1.mat, T2.mat, T3.mat, T4.mat },
+    A{
+        Vec4f(T1.A[0], T2.A[0], T3.A[0], T4.A[0]),
+        Vec4f(T1.A[1], T2.A[1], T3.A[1], T4.A[1]),
+        Vec4f(T1.A[2], T2.A[2], T3.A[2], T4.A[2])
+    },
+    U{
+        Vec4f(T1.U[0], T2.U[0], T3.U[0], T4.U[0]),
+        Vec4f(T1.U[1], T2.U[1], T3.U[1], T4.U[1]),
+        Vec4f(T1.U[2], T2.U[2], T3.U[2], T4.U[2])
+    },
+    V{
+        Vec4f(T1.V[0], T2.V[0], T3.V[0], T4.V[0]),
+        Vec4f(T1.V[1], T2.V[1], T3.V[1], T4.V[1]),
+        Vec4f(T1.V[2], T2.V[2], T3.V[2], T4.V[2]),
+    },
+    N{ T1.N, T2.N, T3.N, T4.N }
+{}
+
+
+bool TrianglePacket::cast(
+    const Ray& ray,
+    HitRecord& record
 ) const {
     // Möller–Trumbore intersection algorithm
     // using simd instructions for parallel
-    // processing of multiple rays
-    
-    // compute cross products between ray 
-    // directions and one edge of the triangle
-    Vec4f hx = (rays.v * Vz) - (rays.w * Vy);
-    Vec4f hy = (rays.w * Vx) - (rays.u * Vz);
-    Vec4f hz = (rays.u * Vy) - (rays.v * Vx);
-    // compute dot-product with the other edge 
-    Vec4f a = (Ux * hx) + (Uy * hy) + (Uz * hz);
-    // build the fist mask that checks if
-    // the ray is parallel to the triangle
-    Vec4f mask1 = (a < Vec4f::neps) | (Vec4f::eps < a);
-    // compute the inverse
-    Vec4f f = Vec4f::ones / a; //_mm_rcp_ps(a);
-    // compute the vector from the triangle
-    // corner to the ray origin
-    Vec4f sx = rays.x - Ax;
-    Vec4f sy = rays.y - Ay;
-    Vec4f sz = rays.z - Az;
-    // compute the first intersection scalar
-    // and check if it is bounds
-    Vec4f u = ((sx * hx) + (sy * hy) + (sz * hz)) * f;
-    Vec4f mask2 = (Vec4f::zeros < u) & (u < Vec4f::ones);
-    // compute cross product
-    Vec4f qx = (sy * Uz) - (sz * Uy);
-    Vec4f qy = (sz * Ux) - (sx * Uz);
-    Vec4f qz = (sx * Uy) - (sy * Ux);
-    // compute the second intersection scalar
-    // and again check if it is in bounds
-    Vec4f v = ((rays.u * qx) + (rays.v * qy) + (rays.w * qz)) * f;
-    Vec4f mask3 = (Vec4f::zeros < v) & ((u + v) < Vec4f::ones);
-    // at this stage we know that the ray intersects
-    // with the triangle and we can compute the distance
-    // between them
-    Vec4f t = ((Vx * qx) + (Vy * qy) + (Vz * qz)) * f;
-    // make sure that only intersections that are
-    // in front of the ray are counted
-    Vec4f mask4 = (Vec4f::eps < t);
-    // combine all maskes into one
-    Vec4f mask = mask1 & mask2 & mask3 & mask4;
+    // processing of triangles rays at once
+    // TODO: share these along all triangles
+    Vec4f ray_orig[3] = { 
+        Vec4f(ray.origin[0]), 
+        Vec4f(ray.origin[1]),
+        Vec4f(ray.origin[2])
+    };
+    Vec4f ray_dir[3] = {
+        Vec4f(ray.direction[0]), 
+        Vec4f(ray.direction[1]),
+        Vec4f(ray.direction[2])
+    };
 
-    // set all values of the
-    // hit record packet
-    records.t = t;
-    // hit points
-    records.px = rays.x + t * rays.u;
-    records.py = rays.y + t * rays.v;
-    records.pz = rays.z + t * rays.w;
-    // normals
-    records.nx = Nx;
-    records.ny = Ny;
-    records.nz = Nz;
-    // incident ray directions
-    records.vx = rays.u;
-    records.vy = rays.v;
-    records.vz = rays.w;
-    // hit records of rays that actually do
-    // not hit the triangle are set invalid
-    // and thus ignored by the renderer
-    records.valids = mask;
-    // update all materials
-    // to the triangle material
-    records.mats[0] = mat;
-    records.mats[1] = mat;
-    records.mats[2] = mat;
-    records.mats[3] = mat;
+    // check if the ray is parallel to triangle 
+    Vec4f h[3]; cross(h, ray_dir, V); 
+    Vec4f a = dot(U, h);
+    Vec4f mask1 = (a < Vec4f::neps) | (Vec4f::eps < a);
+    // check if intersection in
+    // range of first edge
+    Vec4f f = Vec4f::ones / a;
+    Vec4f s[3] = {
+        ray_orig[0] - A[0],
+        ray_orig[1] - A[1],
+        ray_orig[2] - A[2]
+    };
+    Vec4f u = dot(s, h) * f;
+    Vec4f mask2 = (Vec4f::zeros < u) & (u < Vec4f::ones);
+    // check if intersection is
+    // in range of both edges
+    Vec4f q[3]; cross(q, s, U);
+    Vec4f v = dot(ray_dir, q) * f;
+    Vec4f mask3 = (Vec4f::zeros < v) & ((u + v) < Vec4f::ones);
+    // compute the distance between the origin
+    // of the ray and the intersection point
+    // and make sure it is in front of the ray
+    Vec4f t = dot(V, q) * f;
+    Vec4f mask4 = (Vec4f::eps < t);
+    // find the closest triangle
+    // intersecting with the ray
+    size_t idx = -1;
+    unsigned int mask = _mm_movemask_ps(mask1 & mask2 & mask3 & mask4);
+    for (size_t i = 0; i < 4; i++) {
+        // make sure that
+        //  - the ray intersects with the current triangle
+        //  - the intersection point is closer than the current best
+        if ((mask & 1) && ((t[i] < record.t) || (!record.valid))) {
+            // update the index and the
+            // current best distance
+            idx = i;
+            record.t = t[i];             
+            record.valid = true;
+        }
+        // go to the next triangle
+        mask >>= 1;
+    }
+    // update the hit record with
+    // the values of the closest triangle
+    if (idx >= 0) {
+        // compute the hitpoint and update all
+        // values that were not set previously
+        record.p = Vec3f(record.t).fmadd(ray.direction, ray.origin);
+        record.n = N[idx];
+        record.v = ray.direction;
+        record.mat = mats[idx];
+    }
+    // indicate that the ray intersected
+    // with any of the triangles
+    return record.valid;
 }
 
 /*
@@ -162,22 +183,31 @@ PrimitiveList::PrimitiveList(
     std::vector<const Primitive*>(begin, end)
 {}
 
-void PrimitiveList::cast_packet(
-    const Ray4& rays,
-    HitRecord4& records,
-    const size_t& n_valids
+bool PrimitiveList::cast(
+    const Ray& ray,
+    HitRecord& record
 ) const {
     // temporary hitrecord to compare
     // with the current best
-    HitRecord4 tmp;
+    HitRecord tmp;
     // check all primitives in list
     for (const Primitive* p : *this) {
         // cast the ray packet to the
         // current primitive and update
         // the hitrecords
-        p->cast_packet(rays, tmp, n_valids);
-        records.update(tmp); 
+        if (p->cast(ray, tmp)) {
+            // update the hit records stored
+            // in the contribution info if neccessary
+            if ((record.t > tmp.t) || (!record.valid)) {
+                // keep the valid hitrecord with
+                // smaller distance 
+                record = tmp; 
+            }
+        }
     }
+    // indicate that the ray did
+    // hit some primitive in the list
+    return record.valid;
 }
 
 /*

@@ -22,27 +22,12 @@ typedef struct Ray {
     Vec3f direction;
 } Ray;
 
-// a packet of 4 rays
-typedef struct Ray4 {
-    Vec4f x, y, z;  // all positional information
-    Vec4f u, v, w;  // all directional information
-} Ray4;
-
 // struct combining a single ray
 // with it's contribution info
 typedef struct RayContribPair {
     Ray ray;
     ContribInfo* contrib;
 } RayContribPair;
-
-// struct combining a ray packet
-// with a references to their contribution info
-typedef struct RayContribPacket {
-    Ray4 rays;                  // the rays of the packet
-    ContribInfo* contribs[4];   // contribution infos of the rays
-    size_t n_valids;            // number of valid rays on the packet
-} RayContribPacket;
-
 
 // Ray Buckets store a vector of rays
 // that are yet to be casted against the 
@@ -63,10 +48,9 @@ public:
     // basic vector properties
     bool empty(void) const;
     size_t size(void) const; 
-    // build a ray-packet of the
-    // first 4 rays in the bucket
-    // and remove them
-    RayContribPacket pop_packet(void);
+    // get and remove a ray from
+    // the bucket
+    RayContribPair pop(void);
 };
 
 

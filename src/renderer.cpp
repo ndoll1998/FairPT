@@ -71,31 +71,15 @@ void Renderer::flush_cache(void) {
         // list of primitives
         while (!bucket.empty()) {
             // get the current ray-contrib pair
-            RayContribPacket packet = bucket.pop_packet();
+            RayContribPair pair = bucket.pop();
             // cast the packet against all the
-            // primitives in the list
-            HitRecord4 record_packet;
-            prim_list.cast_packet(packet.rays, record_packet, packet.n_valids);
-            // split the packet of hitrecords into
-            // single records for easier processing
-            HitRecord records[4];
-            record_packet.split(records);
-            // update all the hitrecords 
-            for (size_t k = 0; k < packet.n_valids; k++) {
-                // get a reference to the contribution
-                // info and the new hitrecord of the current ray
-                ContribInfo* contrib = packet.contribs[k];
-                HitRecord& h = records[k];
-                // update the hitrecord
-                if (contrib->hit_record.valid) {
-                    // in case both hitrecords are valid
-                    // keep the one with closer distance
-                    contrib->hit_record = (contrib->hit_record.t < h.t)? contrib->hit_record : h;
-                } else {
-                    // otherwise keep the one that is valid
-                    contrib->hit_record = h; 
-                }
-            }
+            // primitives in the list and store
+            // the hitrecord in the contributon
+            // info
+            prim_list.cast(pair.ray, pair.contrib->hit_record);            
+            // note that the update of the
+            // hitrecord incorporates the 
+            // previous hitrecord
         }
     }
 

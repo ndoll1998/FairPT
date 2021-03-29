@@ -37,6 +37,44 @@ int main(void) {
 
     // build the scene
     PrimitiveList pl;
+    
+    pl.push_back(new TrianglePacket(
+        // light
+        Triangle(Vec3f(0.3, 0.999, -0.3), Vec3f(0.7, 0.999, -0.3), Vec3f(0.3, 0.999, -0.7), light),
+        Triangle(Vec3f(0.7, 0.999, -0.7), Vec3f(0.3, 0.999, -0.7), Vec3f(0.7, 0.999, -0.3), light),
+        // ceiling
+        Triangle(Vec3f(0, 1, 0), Vec3f(0, 1, -1), Vec3f(1, 1, 0), white),
+        Triangle(Vec3f(1, 1, -1), Vec3f(1, 1, 0), Vec3f(0, 1, -1), white)
+    ));
+    
+    pl.push_back(new TrianglePacket(
+        // floor
+        Triangle(Vec3f(0, 0, 0), Vec3f(1, 0, 0), Vec3f(0, 0, -1), white),
+        Triangle(Vec3f(1, 0, -1), Vec3f(0, 0, -1), Vec3f(1, 0, 0), white),
+        // back
+        Triangle(Vec3f(0, 0, -1), Vec3f(1, 0, -1), Vec3f(0, 1, -1), white),
+        Triangle(Vec3f(1, 1, -1), Vec3f(0, 1, -1), Vec3f(1, 0, -1), white)
+    ));
+    
+    pl.push_back(new TrianglePacket(
+        // front
+        Triangle(Vec3f(1, 1, 0), Vec3f(1, 0, 0), Vec3f(0, 1, 0), white),
+        Triangle(Vec3f(0, 0, 0), Vec3f(0, 1, 0), Vec3f(1, 0, 0), white),
+        // left
+        Triangle(Vec3f(0, 0, 0), Vec3f(0, 0, -1), Vec3f(0, 1, 0), red),
+        Triangle(Vec3f(0, 1, -1), Vec3f(0, 1, 0), Vec3f(0, 0, -1), red)
+    ));
+    
+    pl.push_back(new TrianglePacket(
+        // right
+        Triangle(Vec3f(1, 0, 0), Vec3f(1, 1, 0), Vec3f(1, 0, -1), blue),
+        Triangle(Vec3f(1, 1, -1), Vec3f(1, 0, -1), Vec3f(1, 1, 0), blue),
+        // fill up ray packet
+        Triangle(Vec3f(1, 0, 0), Vec3f(1, 1, 0), Vec3f(1, 0, -1), blue),
+        Triangle(Vec3f(1, 1, -1), Vec3f(1, 0, -1), Vec3f(1, 1, 0), blue)
+    ));
+    
+    /*
     // light
     pl.push_back(new Triangle(Vec3f(0.3, 0.999, -0.3), Vec3f(0.7, 0.999, -0.3), Vec3f(0.3, 0.999, -0.7), light));
     pl.push_back(new Triangle(Vec3f(0.7, 0.999, -0.7), Vec3f(0.3, 0.999, -0.7), Vec3f(0.7, 0.999, -0.3), light));
@@ -58,12 +96,13 @@ int main(void) {
     // right
     pl.push_back(new Triangle(Vec3f(1, 0, 0), Vec3f(1, 1, 0), Vec3f(1, 0, -1), blue));
     pl.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(1, 0, -1), Vec3f(1, 1, 0), blue));
-    
+    */    
+
     BVH bvh(pl);
     Scene scene(bvh);
 
-    Renderer renderer(scene, cam, 32, 10); 
-    FrameBuffer fb(200, 200);
+    Renderer renderer(scene, cam, 128, 10); 
+    FrameBuffer fb(400, 400);
     
     auto start = chrono::steady_clock::now();
     renderer.render(fb);

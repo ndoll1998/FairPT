@@ -2,7 +2,7 @@
 #define H_PRIMITIVE
 
 // forward declarations
-struct Ray4;
+struct Ray;
 // includes
 #include <vector>
 #include "./vec.hpp"
@@ -20,24 +20,6 @@ typedef struct HitRecord {
     const mtl::Material* mat;   // surface material
 } HitRecord;
 
-// packet of hit records
-// storing up to 4 hitrecords
-typedef struct HitRecord4 {
-    Vec4f t;            // distances to intersection point
-    Vec4f px, py, pz;   // points of intersection
-    Vec4f nx, ny, nz;   // surface normals at intersection
-    Vec4f vx, vy, vz;   // directions of incident rays
-    Vec4f valids = Vec4f::zeros;    // which of the hits are valid
-    const mtl::Material* mats[4];    // surface materials
-    // update hitrecord, i.e. of each pair
-    // of hitrecords at the same index keep 
-    // the valid one with minimal distance
-    void update(const HitRecord4& other);
-    // separate the packet of hitrecords
-    // into array of single hitrecords
-    void split(HitRecord* records) const;
-} HitRecord4;
-
 /*
  *  Primitives
  */
@@ -47,18 +29,19 @@ typedef struct HitRecord4 {
 // follow
 class Primitive {
 public:
-    // virtual function to cast a ray packet to
-    // the primitive and receive hitrecord for each
-    virtual void cast_packet(
-        const Ray4& rays, 
-        HitRecord4& records,
-        const size_t& n_valids
+    // virtual function to cast a ray to
+    // the primitive and receive a hitrecord
+    virtual bool cast(
+        const Ray& rays, 
+        HitRecord& records
     ) const = 0;
     // build an axis-aligned bounding box
     // complete surrounding the primitive
     // virtual AABB build_aabb(void) const = 0;
 };
 
+// forward declaration
+class TrianglePacket;
 // triangle primitive
 class Triangle : public Primitive {
 private:
@@ -67,11 +50,11 @@ private:
     // the three corner points
     // defining the triangle
     // in counter-clockwise order
-    Vec4f Ax, Ay, Az;
-    Vec4f Ux, Uy, Uz;
-    Vec4f Vx, Vy, Vz;
+    Vec4f A;
+    Vec4f U;
+    Vec4f V;
     // the normal of the triangle
-    Vec4f Nx, Ny, Nz;
+    Vec4f N;
 public:
     // constructor
     Triangle(
@@ -81,13 +64,48 @@ public:
         const mtl::Material* mat
     );
     // override cast function
-    virtual void cast_packet(
-        const Ray4& rays,
-        HitRecord4& records,
-        const size_t& n_valids
+    virtual bool cast(
+        const Ray& ray,
+        HitRecord& record
     ) const;
+    // allow triangle-packet to access
+    // private members of triangles
+    friend TrianglePacket;
 };
 
+class TrianglePacket : public Primitive {
+private:
+    // list of the materials of
+    // all the triangles
+    const mtl::Material* mats[4];
+    // one corner point of each one
+    // of the triangles packet by
+    // coordinate
+    const Vec4f A[3];
+    // the two spanning vectors
+    // of each one of the triangles
+    const Vec4f U[3];
+    const Vec4f V[3];
+    // all normal vectors of the
+    // triangles
+    const Vec3f N[4];
+public:
+    // constructor
+    TrianglePacket(void) = default;
+    TrianglePacket(
+        const Triangle& T1,
+        const Triangle& T2,
+        const Triangle& T3,
+        const Triangle& T4
+    );
+    // process all triangles in
+    // the packet at once using
+    // simd instructions
+    virtual bool cast(
+        const Ray& ray,
+        HitRecord& record
+    ) const;
+};
 
 /*
  *  Collection of Primitives
@@ -107,14 +125,17 @@ public:
     );
     // cast a ray to each primitive
     // of the primtive list iteratively
-    virtual void cast_packet(
-        const Ray4& rays,
-        HitRecord4& records,
-        const size_t& n_valids
+    virtual bool cast(
+        const Ray& ray,
+        HitRecord& record
     ) const;
 };
 
-// bounding volume hiararchy
+
+/*
+ *  Bounding Volume Hierarchy
+ */
+
 class BVH {
 private:
     const PrimitiveList prims;
