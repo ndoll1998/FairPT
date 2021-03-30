@@ -48,6 +48,7 @@ public:
         __m128 tmp = _mm_hadd_ps(*this, *this);
         return _mm_hadd_ps(tmp, tmp);
     }
+    inline Vec4f rotate(void) const { return _mm_shuffle_ps(*this, *this, 0x39); }
     // fused multiply-add operation
     inline Vec4f fmadd(
         const Vec4f& b,
@@ -74,6 +75,8 @@ public:
     static const Vec4f ones;
     static const Vec4f eps;
     static const Vec4f neps;
+    static const Vec4f inf;
+    static const Vec4f ninf;
 };
 
 // arithmetic operators

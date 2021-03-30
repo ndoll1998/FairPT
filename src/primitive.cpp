@@ -1,5 +1,8 @@
 #include "./primitive.hpp"
 #include "./ray.hpp"
+#include <algorithm>
+#include <numeric>
+#include <queue>
 #include <math.h>
 
 // helper functions for packet vectors
@@ -32,6 +35,47 @@ void sub(
 
 
 /*
+ *  Axis-Aligned Bounding Box
+ */
+
+AABB::AABB(
+    const Vec3f& A,
+    const Vec3f& B
+) :
+    min(A.min(B)),
+    max(A.max(B))
+{
+}
+
+Vec3f AABB::center(void) const {
+    return (min + max) * 0.5f;
+}
+
+bool AABB::cast(const Ray& r) const
+{
+
+    const Vec3f l1 = (min - r.origin) / r.direction;
+    const Vec3f l2 = (max - r.origin) / r.direction;
+    
+    const Vec4f filtered_l1a = l1.min(Vec3f::inf);
+    const Vec4f filtered_l2a = l2.min(Vec3f::inf);
+
+    const Vec4f filtered_l1b = l1.max(Vec3f::ninf);
+    const Vec4f filtered_l2b = l2.max(Vec3f::ninf);
+
+    Vec4f lmax = filtered_l1a.max(filtered_l2a);
+    Vec4f lmin = filtered_l1b.min(filtered_l2b);
+    
+    lmax = lmax.min(lmax.rotate());
+    lmin = lmin.max(lmin.rotate());
+
+    lmax = lmax.min(_mm_movehl_ps(lmax, lmax));
+    lmin = lmin.max(_mm_movehl_ps(lmin, lmin));
+    
+    return _mm_comige_ss(lmax, Vec4f::zeros) & _mm_comige_ss(lmax, lmin);
+}
+
+/*
  *  Triangle
  */
 
@@ -46,12 +90,28 @@ Triangle::Triangle(
 
 AABB Triangle::build_aabb(void) const
 {
+    // build a bounding box containing all
+    // three corner points of the triangles
+    return AABB(
+        A.min(B.min(C)),
+        A.max(B.max(C))
+    );
 }
 
 
 /*
  * Triangle Collection
  */
+
+TriangleCollection::TriangleCollection(
+    const std::vector<Triangle>::const_iterator& begin,
+    const std::vector<Triangle>::const_iterator& end
+) {
+    // push each triangle in the iterator
+    // onto the collection
+    std::for_each(begin, end, [this](const Triangle& t) { push_back(t); });
+}
+
 
 bool TriangleCollection::cast_ray_triangle(
     const Ray& ray,
@@ -193,29 +253,196 @@ void TriangleCollection::push_back(const Triangle& T)
  */
 
 
-BVH::BVH(const std::vector<Triangle>& triangles)
-{
-    for (const Triangle& t : triangles) {
-       tri_collection.push_back(t); 
+BVH::BVH(
+    const std::vector<Triangle>& tris,
+    const size_t& max_depth,
+    const size_t& min_size
+) {
+    // compute the depth of the tree
+    depth = ceil(log2f((float)tris.size()));
+    depth = (depth > max_depth)? max_depth : depth;
+    // compute the number of inner and leaf nodes
+    n_inner_nodes = pow(2, depth) - 1;
+    n_total_nodes = pow(2, depth+1) - 1;
+    // allocate memory for the binary tree
+    tree = new bvh_node[n_total_nodes];
+    // allocate memory to store
+    //  - the primitive assignment of inner nodes
+    //  - if the node is a valid inner node
+    std::vector<Triangle>* tmp_tris_assign = new std::vector<Triangle>[n_inner_nodes];
+    bool* valid_inner = new bool[n_inner_nodes];
+    
+    // helper function to set the value of
+    // a node during construction of the tree
+    auto set_node = [this, &tmp_tris_assign, &valid_inner, &min_size](
+        const size_t& i,
+        const std::vector<Triangle>::const_iterator& begin,
+        const std::vector<Triangle>::const_iterator& end
+    ) {
+        // initially mark the current node as invalid
+        // provided that it is not in the last layer
+        // this will be overriden if the node
+        // turns out to be an inner node
+        if (i < n_inner_nodes) { valid_inner[i] = false; }
+        // get the number of elements stored
+        // in the subtree of the current node
+        size_t d = std::distance(begin, end);
+        // make sure the subtree rooted at i
+        // stores at least one primitive
+        // this is only violated if the initial
+        // primitive list that is passed to the
+        // bounding Volume Hierarchy is empty
+        if (d == 0) { return; }
+        // create primitive list storing the
+        // the primitives in the given iterator
+        std::vector<Triangle>* cur_tris_ptr = new std::vector<Triangle>(begin, end);
+        // build the axis aligned bounding box
+        // that contains all triangles in the vector
+        AABB aabb = cur_tris_ptr->at(0).build_aabb();
+        for (const Triangle& t : *cur_tris_ptr) {
+            AABB tmp = t.build_aabb();
+            aabb.min = aabb.min.min(tmp.min);
+            aabb.max = aabb.max.max(tmp.max);
+        }
+        // check if the node is a leaf node
+        // which means that either
+        //  - the node is at maximum depth
+        //  - the minumum number of primitives would be 
+        //    violated by splitting the node again
+        if ((i >= n_inner_nodes) || (d < min_size * 2)) {
+            // pack triangles from vector into a
+            // triangle collection and update the node
+            TriangleCollection* tri_col = new TriangleCollection(begin, end);
+            tree[i] = { aabb, tri_col };
+        } else {
+            // if none of the above statements hold true
+            // then the current node is an inner node
+            tree[i] = { aabb, nullptr };
+            tmp_tris_assign[i] = *cur_tris_ptr;
+            valid_inner[i] = true;
+		}
+        // clear memory
+		delete cur_tris_ptr;
+    };
+
+    // set root of the tree
+    set_node(0, tris.begin(), tris.end());
+
+    // build binary tree in top-down fashion
+    // starting at the root and splitting it up
+    for (size_t i = 0; i < n_inner_nodes; i++) {
+
+        // make sure the current node is a valid 
+        // inner node, i.e. it is not in the 
+        // subtree rooted at a node that was 
+        // previously declared to be a leaf node 
+        // (see set_node function)
+        if (!valid_inner[i]) { continue; }
+        
+        // get the list of triangles assigned
+        // to the current inner node
+        std::vector<Triangle> node_tris = tmp_tris_assign[i];
+        
+        // collect the center points of all
+        // primitves in the current node
+        std::vector<Vec3f> vecs; vecs.reserve(node_tris.size());
+        for (const Triangle& p : node_tris)
+            vecs.push_back(p.build_aabb().center());
+        // compute their variance for each dimension
+        float inv = (1.0f / vecs.size());
+        Vec3f mean = std::accumulate(vecs.begin(), vecs.end(), Vec3f::zeros) * inv;
+        for (Vec3f& v : vecs) { v = v - mean; v = v * v; }
+        Vec3f var = std::accumulate(vecs.begin(), vecs.end(), Vec3f::zeros) * inv;
+        // choose dimension with maximum variance
+        // as the split axis for the current node
+        float x = var[0], y = var[1], z = var[2];
+        short axis = (x > y)? 
+                    ( (z > x)? 2 : 0 ) : 
+                    ( (z > y)? 2 : 1 ) ;
+        // create comparator for choosen axis
+        auto comp = [&axis](
+            const Triangle& t1, 
+            const Triangle& t2
+        ) -> bool {
+            return t1.build_aabb().center()[axis] < t2.build_aabb().center()[axis]; 
+        };
+        // find median along choosen axis
+        std::vector<Triangle>::iterator begin = node_tris.begin();
+        std::vector<Triangle>::iterator median = node_tris.begin() + node_tris.size() / 2;
+        std::vector<Triangle>::iterator end = node_tris.end();
+        std::nth_element(begin, median, end, comp);
+        
+        // build children nodes by splitting the
+        // primitive list at the median
+        set_node(2 * i + 1, begin, median);
+        set_node(2 * i + 2, median, end);
     }
+    
+    // free memory
+    delete[] tmp_tris_assign;
+    delete[] valid_inner;
 }
+
+BVH::~BVH(void)
+{
+    // delete the primitive lists
+    // associated to leaf nodes
+    for (size_t i = 0; i < n_total_nodes; i++)
+    	if (tree[i].tris_ptr) { delete tree[i].tris_ptr; }
+    delete[] tree;
+}
+
+#include <iostream>
+using namespace std;
 
 void BVH::get_intersecting_leafs(
     const Ray& ray,
     std::vector<size_t>& leaf_ids
 ) const {
+    // make sure the leaf ids vector
+    // is initially empty
     leaf_ids.clear();
-    leaf_ids.push_back(0);
+    // create a queue to hold all inner nodes
+    // that need to be checked during traversal
+    std::queue<size_t> q;
+    q.push(0);      // add root node
+    // traverse the tree
+    while (!q.empty()) {
+        // get the next node to process
+        // and remove it from the queue
+        size_t i = q.front();
+        bvh_node node = tree[i];
+        q.pop();
+        // check if the ray intersects with
+        // the current node
+        if (node.aabb.cast(ray)) {
+            // check if the node is a leaf node
+            // by testing if it has any triangles
+            // assigned to it
+            if (node.tris_ptr) {
+                // add the node to the leaf ids vector
+                leaf_ids.push_back(i);
+            } else {
+                // add all children of the current node
+                // to the queue to check them later
+                q.push(2 * i + 1);
+                q.push(2 * i + 2);
+            }
+        }
+    }
 }
 
 const Primitive* BVH::leaf_primitive(
     const size_t& i
 ) const {
-    return &tri_collection;
+    // return the triangle collection assigned
+    // to the node with the given index in the tree
+    return tree[i].tris_ptr;
 }
 
 size_t BVH::n_leafs(void) const {
-    // TODO: for testing
-    return 1;
+    // leaf nodes are exactly those nodes
+    // of a tree that are not inner nodes
+    return n_total_nodes - n_inner_nodes;
 }
 

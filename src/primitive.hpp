@@ -3,6 +3,7 @@
 
 // forward declarations
 struct Ray;
+class BVH;
 // includes
 #include <array>
 #include <vector>
@@ -24,10 +25,26 @@ typedef struct HitRecord {
 
 // axis-aligned bounding box needed
 // for bounding volume hierarchy
-typedef struct AABB {
-    Vec3f min;
-    Vec3f max;
-} AABB;
+class AABB {
+private:
+    // minimum and maximum corner of
+    // the bounding box
+    Vec3f min = Vec3f::zeros;
+    Vec3f max = Vec3f::zeros;
+public:
+    // constructor
+    AABB(void) = default;
+    AABB(
+        const Vec3f& A,
+        const Vec3f& B
+    );
+    // get the center of the bounding box
+    Vec3f center(void) const;
+    // cast a ray to the bounding box
+    bool cast(const Ray& r) const;
+    // allow bvh to access private members
+    friend BVH;
+};
 
 
 /*
@@ -102,6 +119,13 @@ private:
         size_t& j   // index of triangle with closest hit
     );
 public:
+    // constructors
+    TriangleCollection(void) = default;
+    TriangleCollection(
+        const std::vector<Triangle>::const_iterator& begin,
+        const std::vector<Triangle>::const_iterator& end
+    );
+    virtual ~TriangleCollection(void) = default;
     // override cast function to process
     // multiple triangles at once using
     // simd instructions
@@ -121,10 +145,26 @@ public:
 
 class BVH {
 private:
-    TriangleCollection tri_collection;
+    // struct defining a node of
+    // the bvh tree
+    struct bvh_node {
+        AABB aabb;                          // associated bounding box
+        TriangleCollection* tris_ptr = nullptr; // only leafs store primitives
+    };
+    // basic tree information
+    size_t depth;
+    size_t n_inner_nodes;
+    size_t n_total_nodes;
+    // memory to store the tree
+    bvh_node* tree;
 public:
-    // constructor
-    BVH(const std::vector<Triangle>& triangles);
+    // constructor and destructor
+    BVH(
+        const std::vector<Triangle>& tris,  // triangles to store in the bvh
+        const size_t& max_depth,            // maximum depth of the bvh
+        const size_t& min_size              // minimum number of primitives per leaf
+    );
+    ~BVH(void);
     // get all leaf ids that
     // intersect the given ray
     void get_intersecting_leafs(
