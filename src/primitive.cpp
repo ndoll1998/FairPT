@@ -3,234 +3,219 @@
 #include <math.h>
 
 // helper functions for packet vectors
-void cross(Vec4f result[3], const Vec4f a[3], const Vec4f b[3]) {
+void cross(
+    std::array<Vec4f, 3>& result, 
+    const std::array<Vec4f, 3>& a, 
+    const std::array<Vec4f, 3>& b
+) {
     result[0] = (a[1] * b[2]) - (a[2] * b[1]);
     result[1] = (a[2] * b[0]) - (a[0] * b[2]);
     result[2] = (a[0] * b[1]) - (a[1] * b[0]);
 }
 
-Vec4f dot(const Vec4f a[3], const Vec4f b[3]) {
+Vec4f dot(
+    const std::array<Vec4f, 3>& a, 
+    const std::array<Vec4f, 3>& b
+) {
     return a[0].fmadd(b[0], a[1].fmadd(b[1], a[2] * b[2]));
 }
 
+void sub(
+    std::array<Vec4f, 3>& result,
+    const std::array<Vec4f, 3>& a,
+    const std::array<Vec4f, 3>& b
+) {
+    result[0] = a[0] - b[0];
+    result[1] = a[1] - b[1];
+    result[2] = a[2] - b[2];
+}
+
+
 /*
- *  Triangle Primitive
+ *  Triangle
  */
 
 Triangle::Triangle(
     const Vec3f& A,
     const Vec3f& B,
     const Vec3f& C,
-    const mtl::Material* mat
-) : 
-    mat(mat),
-    A(A),
-    U(B - A),
-    V(C - A),
-    N(U.cross(V).normalize())
-{}
-
-bool Triangle::cast(
-    const Ray& r,
-    HitRecord& record
-) const {
-    // Müller-Trumbore intersection algorithm
-    // check if ray is parallel to triangle 
-    Vec3f h = r.direction.cross(V);
-    Vec3f a = U.dot(h);
-    if ((a[0] > -1e-3) && (a[0] < 1e-3)) { return false; }
-    // check if intersection is in 
-    // range of the first edge 
-    Vec3f f = Vec3f::ones/a;
-    Vec3f s = r.origin - A;
-    Vec3f u = f * s.dot(h);
-    // ray misses
-    if ((u[0] < 0.0f) || (u[0] > 1.0f)) { return false; }
-    // check if intersection is
-    // in range of both edges
-    Vec3f q = s.cross(U);
-    Vec3f v = f * r.direction.dot(q);
-    // ray misses
-    if ((v[0] < 0.0f) || (u[0] + v[0] > 1.0f)) { return false; }
-    // at this point we know that
-    // the ray does intersect the
-    // triangle so we can compute
-    // the distance 
-    Vec3f t = f * V.dot(q);
-    // triangle is behind the ray
-    if (t[0] < 1e-3) { return false; }
-    // compute the intersection point
-    Vec3f p = t.fmadd(r.direction, r.origin);
-    record = { t[0], p, N, r.direction, true, mat };
-    return true;
+    const mtl::Material* mtl
+) : A(A), B(B), C(C), mtl(mtl)
+{
 }
 
+AABB Triangle::build_aabb(void) const
+{
+}
+
+
 /*
- *  Triangle Packet Primitive
+ * Triangle Collection
  */
 
-
-TrianglePacket::TrianglePacket(
-    const Triangle& T1,
-    const Triangle& T2,
-    const Triangle& T3,
-    const Triangle& T4
-) :
-    mats{ T1.mat, T2.mat, T3.mat, T4.mat },
-    A{
-        Vec4f(T1.A[0], T2.A[0], T3.A[0], T4.A[0]),
-        Vec4f(T1.A[1], T2.A[1], T3.A[1], T4.A[1]),
-        Vec4f(T1.A[2], T2.A[2], T3.A[2], T4.A[2])
-    },
-    U{
-        Vec4f(T1.U[0], T2.U[0], T3.U[0], T4.U[0]),
-        Vec4f(T1.U[1], T2.U[1], T3.U[1], T4.U[1]),
-        Vec4f(T1.U[2], T2.U[2], T3.U[2], T4.U[2])
-    },
-    V{
-        Vec4f(T1.V[0], T2.V[0], T3.V[0], T4.V[0]),
-        Vec4f(T1.V[1], T2.V[1], T3.V[1], T4.V[1]),
-        Vec4f(T1.V[2], T2.V[2], T3.V[2], T4.V[2]),
-    },
-    N{ T1.N, T2.N, T3.N, T4.N }
-{}
-
-
-bool TrianglePacket::cast(
+bool TriangleCollection::cast_ray_triangle(
     const Ray& ray,
-    HitRecord& record
-) const {
+    const std::array<Vec4f, 3>& A,
+    const std::array<Vec4f, 3>& U,
+    const std::array<Vec4f, 3>& V,
+    float& t,   // distance to intersection point
+    size_t& j   // index of triangle with closest hit
+) {
     // Möller–Trumbore intersection algorithm
     // using simd instructions for parallel
     // processing of triangles rays at once
     // TODO: share these along all triangles
-    Vec4f ray_orig[3] = { 
+    std::array<Vec4f, 3> ray_orig = { 
         Vec4f(ray.origin[0]), 
         Vec4f(ray.origin[1]),
         Vec4f(ray.origin[2])
     };
-    Vec4f ray_dir[3] = {
+    std::array<Vec4f, 3> ray_dir = {
         Vec4f(ray.direction[0]), 
         Vec4f(ray.direction[1]),
         Vec4f(ray.direction[2])
     };
 
     // check if the ray is parallel to triangle 
-    Vec4f h[3]; cross(h, ray_dir, V); 
+    std::array<Vec4f, 3> h; cross(h, ray_dir, V); 
     Vec4f a = dot(U, h);
     Vec4f mask1 = (a < Vec4f::neps) | (Vec4f::eps < a);
     // check if intersection in
     // range of first edge
     Vec4f f = Vec4f::ones / a;
-    Vec4f s[3] = {
-        ray_orig[0] - A[0],
-        ray_orig[1] - A[1],
-        ray_orig[2] - A[2]
-    };
+    std::array<Vec4f, 3> s; sub(s, ray_orig, A);
     Vec4f u = dot(s, h) * f;
     Vec4f mask2 = (Vec4f::zeros < u) & (u < Vec4f::ones);
     // check if intersection is
     // in range of both edges
-    Vec4f q[3]; cross(q, s, U);
+    std::array<Vec4f, 3> q; cross(q, s, U);
     Vec4f v = dot(ray_dir, q) * f;
     Vec4f mask3 = (Vec4f::zeros < v) & ((u + v) < Vec4f::ones);
     // compute the distance between the origin
     // of the ray and the intersection point
     // and make sure it is in front of the ray
-    Vec4f t = dot(V, q) * f;
-    Vec4f mask4 = (Vec4f::eps < t);
+    Vec4f ts = dot(V, q) * f;
+    Vec4f mask4 = (Vec4f::eps < ts);
     // find the closest triangle
     // intersecting with the ray
-    size_t idx = -1;
+    bool hit = false;
     unsigned int mask = _mm_movemask_ps(mask1 & mask2 & mask3 & mask4);
     for (size_t i = 0; i < 4; i++) {
-        // make sure that
+        // update the current best if both
         //  - the ray intersects with the current triangle
         //  - the intersection point is closer than the current best
-        if ((mask & 1) && ((t[i] < record.t) || (!record.valid))) {
-            // update the index and the
-            // current best distance
-            idx = i;
-            record.t = t[i];             
-            record.valid = true;
-        }
+        if ((mask & 1u) && ((ts[i] < t) || (!hit))) { j = i; t = ts[i]; hit = true; }
         // go to the next triangle
         mask >>= 1;
     }
-    // update the hit record with
-    // the values of the closest triangle
-    if (idx >= 0) {
-        // compute the hitpoint and update all
-        // values that were not set previously
-        record.p = Vec3f(record.t).fmadd(ray.direction, ray.origin);
-        record.n = N[idx];
-        record.v = ray.direction;
-        record.mat = mats[idx];
-    }
-    // indicate that the ray intersected
-    // with any of the triangles
-    return record.valid;
+    // indicate that the ray intersected with at
+    // least one of the 
+    return hit;
 }
 
-/*
- *  Primitive List
- */
-
-PrimitiveList::PrimitiveList(
-    const PrimitiveList::const_iterator& begin,
-    const PrimitiveList::const_iterator& end
-) :
-    std::vector<const Primitive*>(begin, end)
-{}
-
-bool PrimitiveList::cast(
+bool TriangleCollection::cast(
     const Ray& ray,
     HitRecord& record
 ) const {
-    // temporary hitrecord to compare
-    // with the current best
-    HitRecord tmp;
-    // check all primitives in list
-    for (const Primitive* p : *this) {
-        // cast the ray packet to the
-        // current primitive and update
-        // the hitrecords
-        if (p->cast(ray, tmp)) {
-            // update the hit records stored
-            // in the contribution info if neccessary
-            if ((record.t > tmp.t) || (!record.valid)) {
-                // keep the valid hitrecord with
-                // smaller distance 
-                record = tmp; 
+    // values to mark the current best hit
+    float t;            // distance to the current closest intersection
+    size_t i;           // index of the triangle with the current best hit
+    bool hit = false;   // did the ray hit a triangle yet
+    // check all triangle packets in list
+    for (size_t k = 0; k < A.size(); k++) {
+        // gather all information needed to cast the
+        // ray against the current triangle packet
+        const std::array<Vec4f, 3>& a = A[k];
+        const std::array<Vec4f, 3>& u = U[k];
+        const std::array<Vec4f, 3>& v = V[k];
+        // cast the ray against the traingle packet
+        float tmp_t = t; size_t tmp_j;
+        if (TriangleCollection::cast_ray_triangle(ray, a, u, v, tmp_t, tmp_j)) {
+            // update the current best if neccessary
+            if ((t > tmp_t) || (!hit)) {
+                // keep the smaller distance and update the
+                // index to point to the triangle and packet
+                t = tmp_t;
+                i = tmp_j + k * 4;
+                hit = true;
             }
         }
     }
-    // indicate that the ray did
-    // hit some primitive in the list
-    return record.valid;
+    // check if the ray did hit any of the triangles
+    // in the collection
+    if (hit) {
+        // compute the point of intersection
+        Vec3f p = Vec3f(t).fmadd(ray.direction, ray.origin);
+        // update the hitrecord accordingly
+        record = { t, p, N[i], ray.direction, true, mtls[i] };
+    }
+    // indicate that the ray indeed hit
+    // a triangle of the collection
+    return hit;
 }
+
+void TriangleCollection::push_back(const Triangle& T) 
+{
+    // compute the spanning vectors
+    Vec3f u = T.B - T.A;
+    Vec3f v = T.C - T.A;
+    // check if a new triangle packet is
+    // needed for the given triangle
+    size_t i = n_triangles++ % 4;
+    if (i == 0) {
+        // add a new packet filled with
+        // the same triangle
+        A.push_back({ Vec4f(T.A[0]), Vec4f(T.A[1]), Vec4f(T.A[2]) });
+        U.push_back({ Vec4f(u[0]), Vec4f(u[1]), Vec4f(u[2]) });
+        V.push_back({ Vec4f(v[0]), Vec4f(v[1]), Vec4f(v[2]) });
+    } else {
+        // insert the triangle into the
+        // currently last packet
+        A.back()[0][i] = T.A[0];
+        A.back()[1][i] = T.A[1];
+        A.back()[2][i] = T.A[2];
+        U.back()[0][i] = u[0];
+        U.back()[1][i] = u[1];
+        U.back()[2][i] = u[2];
+        V.back()[0][i] = v[0];
+        V.back()[1][i] = v[1];
+        V.back()[2][i] = v[2];
+    }
+    // push normal and material which are not
+    // separated by components
+    N.push_back(u.cross(v).normalize());
+    mtls.push_back(T.mtl);
+}
+
 
 /*
  *  Bounding Volume Hierarchy
  */
 
-BVH::BVH(const PrimitiveList& pl) : prims(pl) {}
+
+BVH::BVH(const std::vector<Triangle>& triangles)
+{
+    for (const Triangle& t : triangles) {
+       tri_collection.push_back(t); 
+    }
+}
 
 void BVH::get_intersecting_leafs(
     const Ray& ray,
     std::vector<size_t>& leaf_ids
 ) const {
-    // TODO: currently 0 for testing
+    leaf_ids.clear();
     leaf_ids.push_back(0);
 }
 
-const PrimitiveList& BVH::leaf_primitives(
+const Primitive* BVH::leaf_primitive(
     const size_t& i
 ) const {
-    return prims;
+    return &tri_collection;
 }
 
 size_t BVH::n_leafs(void) const {
     // TODO: for testing
     return 1;
 }
+

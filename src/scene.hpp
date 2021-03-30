@@ -1,15 +1,20 @@
 #ifndef H_SCENE
 #define H_SCENE
 
-// forward declarations
-class BVH;
-
+// includes
+#include <vector>
+#include "./primitive.hpp"
 
 class Scene {
 private:
-    const BVH& _bvh;
+    // the bounding volume hierarchy
+    // storing all primitives of the scene
+    const BVH _bvh;
 public:
-    Scene(const BVH& bvh);
+    // constructors
+    Scene(
+        const std::vector<Triangle>& triangles  // vector of all triangles in the scene
+    );
     // getter
     const BVH& bvh(void) const;
 };

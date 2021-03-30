@@ -4,6 +4,7 @@
 // forward declarations
 struct Ray;
 // includes
+#include <array>
 #include <vector>
 #include "./vec.hpp"
 #include "./material.hpp"
@@ -20,115 +21,97 @@ typedef struct HitRecord {
     const mtl::Material* mat;   // surface material
 } HitRecord;
 
+
+// axis-aligned bounding box needed
+// for bounding volume hierarchy
+typedef struct AABB {
+    Vec3f min;
+    Vec3f max;
+} AABB;
+
+
 /*
- *  Primitives
+ *  Primitive
  */
 
-// abstract primitive defining the
-// interface that a primitive must
-// follow
+// abstract class defining the interface
+// a primitive must follow
 class Primitive {
 public:
-    // virtual function to cast a ray to
-    // the primitive and receive a hitrecord
+    // cast a given ray to the primitive
+    // and receive a hitrecord
     virtual bool cast(
-        const Ray& rays, 
-        HitRecord& records
+        const Ray& ray,
+        HitRecord& record
     ) const = 0;
-    // build an axis-aligned bounding box
-    // complete surrounding the primitive
-    // virtual AABB build_aabb(void) const = 0;
 };
 
+
+/*
+ *  Triangle
+ */
+
 // forward declaration
-class TrianglePacket;
-// triangle primitive
-class Triangle : public Primitive {
+class TriangleCollection;
+// triangle class implementing a boundable
+// object but not a primitive (rendering
+// single triangles is not supported)
+class Triangle {
 private:
-    // pointer to the material
-    const mtl::Material* mat;
-    // the three corner points
-    // defining the triangle
-    // in counter-clockwise order
-    Vec4f A;
-    Vec4f U;
-    Vec4f V;
-    // the normal of the triangle
-    Vec4f N;
+    // save corner points and material
+    Vec3f A, B, C;
+    const mtl::Material* mtl;
 public:
     // constructor
     Triangle(
         const Vec3f& A, // corner points in
         const Vec3f& B, // counter-clockwise
         const Vec3f& C, // order
-        const mtl::Material* mat
+        const mtl::Material* mtl
     );
-    // override cast function
-    virtual bool cast(
-        const Ray& ray,
-        HitRecord& record
-    ) const;
-    // allow triangle-packet to access
-    // private members of triangles
-    friend TrianglePacket;
+    // build bounding box completly
+    // containing the triangle
+    virtual AABB build_aabb(void) const;
+    // allow triangle collection to
+    // access private members of a triangle
+    friend TriangleCollection;
 };
 
-class TrianglePacket : public Primitive {
+// combine a number of triangles into a
+// single primitive for more efficient
+// memory usage and computations
+class TriangleCollection : public Primitive {
 private:
-    // list of the materials of
-    // all the triangles
-    const mtl::Material* mats[4];
-    // one corner point of each one
-    // of the triangles packet by
-    // coordinate
-    const Vec4f A[3];
-    // the two spanning vectors
-    // of each one of the triangles
-    const Vec4f U[3];
-    const Vec4f V[3];
-    // all normal vectors of the
-    // triangles
-    const Vec3f N[4];
-public:
-    // constructor
-    TrianglePacket(void) = default;
-    TrianglePacket(
-        const Triangle& T1,
-        const Triangle& T2,
-        const Triangle& T3,
-        const Triangle& T4
+    // the data of all the triangle packets
+    // separated into the single components
+    std::vector<std::array<Vec4f, 3>> A, U, V;
+    // the normal vectors and materials
+    // of all triangle packet
+    std::vector<Vec3f> N;
+    std::vector<const mtl::Material*> mtls;
+    // the size of the collection
+    size_t n_triangles = 0;
+    // function to cast a ray to a single
+    // packet of traingles
+    static bool cast_ray_triangle(
+        const Ray& ray,
+        const std::array<Vec4f, 3>& A,
+        const std::array<Vec4f, 3>& U,
+        const std::array<Vec4f, 3>& V,
+        float& t,   // distance to intersection point
+        size_t& j   // index of triangle with closest hit
     );
-    // process all triangles in
-    // the packet at once using
+public:
+    // override cast function to process
+    // multiple triangles at once using
     // simd instructions
     virtual bool cast(
         const Ray& ray,
         HitRecord& record
     ) const;
-};
-
-/*
- *  Collection of Primitives
- */
-
-// primitive list
-class PrimitiveList :
-    public Primitive,
-    public std::vector<const Primitive*>
-{
-public:
-    // constructors
-    PrimitiveList(void) = default;
-    PrimitiveList(
-        const PrimitiveList::const_iterator& begin,
-        const PrimitiveList::const_iterator& end
-    );
-    // cast a ray to each primitive
-    // of the primtive list iteratively
-    virtual bool cast(
-        const Ray& ray,
-        HitRecord& record
-    ) const;
+    // add a triangle to the collection
+    // by pushing it into a packet
+    void push_back(const Triangle& T);
 };
 
 
@@ -138,18 +121,19 @@ public:
 
 class BVH {
 private:
-    const PrimitiveList prims;
+    TriangleCollection tri_collection;
 public:
-    // constructors
-    BVH(const PrimitiveList& pl);
-    // get all leaf ids that intersect the given ray
+    // constructor
+    BVH(const std::vector<Triangle>& triangles);
+    // get all leaf ids that
+    // intersect the given ray
     void get_intersecting_leafs(
         const Ray& r,                   // ray to test intersection with
         std::vector<size_t>& leaf_ids   // output vector of leaf ids
-    ) const;    
-    // return the list of primitives stored 
+    ) const;
+    // return the primitive stored 
     // in a specific leaf of the tree
-    const PrimitiveList& leaf_primitives(const size_t& i) const;
+    const Primitive* leaf_primitive(const size_t& i) const;
     // get the number of leaf nodes
     // in the bvh tree
     size_t n_leafs(void) const;

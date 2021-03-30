@@ -64,19 +64,18 @@ void Renderer::flush_cache(void) {
         RayBucket& bucket = ray_cache.get_bucket(i);
         // check if the bucket is already empty
         if (bucket.empty()) { continue; }
-        // get the list of primitives
-        // corresponding to the current bucket
-        const PrimitiveList& prim_list = bvh.leaf_primitives(i);
+        // get the primitive corresponding
+        // to the current bucket
+        const Primitive* prim = bvh.leaf_primitive(i);
         // cast all rays of the bucket to the
         // list of primitives
         while (!bucket.empty()) {
             // get the current ray-contrib pair
             RayContribPair pair = bucket.pop();
-            // cast the packet against all the
-            // primitives in the list and store
-            // the hitrecord in the contributon
-            // info
-            prim_list.cast(pair.ray, pair.contrib->hit_record);            
+            // cast the packet against the
+            // primitive and store the hitrecord
+            // in the contributon info
+            prim->cast(pair.ray, pair.contrib->hit_record);            
             // note that the update of the
             // hitrecord incorporates the 
             // previous hitrecord
