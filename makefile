@@ -5,8 +5,11 @@ IFLAGS = -Iinclude
 
 default: main
 
-main: src/main.cpp build/vec.o build/ray.o build/primitive.o build/scene.o build/camera.o build/texture.o build/material.o build/renderer.o build/framebuffer.o
+main: src/main.cpp build/vec.o build/ray.o build/primitive.o build/scene.o build/camera.o build/texture.o build/material.o build/mesh.o build/renderer.o build/framebuffer.o
 	$(CC) $(CFLAGS) $(IFLAGS) -o main src/main.cpp build/*.o $(LFLAGS)
+
+build/mesh.o: src/mesh.cpp src/vec.hpp
+	$(CC) $(CFLAGS) $(IFLAGS) -o build/mesh.o -c src/mesh.cpp
 
 build/material.o: src/material.cpp src/vec.hpp
 	$(CC) $(CFLAGS) $(IFLAGS) -o build/material.o -c src/material.cpp
