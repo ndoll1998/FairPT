@@ -2,6 +2,7 @@
 #include "./scene.hpp"
 #include "./ray.hpp"
 #include "./framebuffer.hpp"
+#include <math.h>
 
 // constructors
 Camera::Camera(
@@ -32,7 +33,7 @@ Camera Camera::LookAt(
 const float& Camera::fov(void) const { return _fov; }
 const float& Camera::vp_dist(void) const { return _vp_dist; }
 // setters
-void Camera::fov(const float& new_fov) { _fov = new_fov; }
+void Camera::fov(const float& new_fov) { _fov = new_fov / 180.f * M_PI; }
 void Camera::vp_dist(const float& new_vp_dist) { _vp_dist = new_vp_dist; }
 
 Ray Camera::build_ray_from_uv(
