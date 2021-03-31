@@ -48,27 +48,36 @@ RayBucket& RayCache::get_bucket(
     return buckets[i];
 }
 
+size_t RayCache::pop_non_empty(void) {
+    // get the last non_empty id and
+    // remove it from the vector
+    size_t i = non_empty_ids.back();
+    non_empty_ids.pop_back();
+    return i;
+}
+
 void RayCache::sort_into_buckets(
     const Ray& ray,
     ContribInfo* contrib,
     std::vector<size_t> ids
 ) {
     // push the ray and its contribution
-    // info onto all buckets with id in
+    // info into all buckets with id in
     // the provided list of ids
     for (size_t& i : ids) {
-        buckets[i].push_back(ray, contrib);
+        RayBucket& bucket = buckets[i];
+        bool was_empty = bucket.empty();
+        // push the ray into the bucket
+        bucket.push_back(ray, contrib);
+        // add the bucket to the non-empty vector
+        // if it is not yet on there, i.e. if the
+        // bucket was empty previously
+        if (was_empty) { non_empty_ids.push_back(i); }
     }
 }
 
 bool RayCache::empty(void) const {
-    // loop through all buckets and
-    // check if there is one that is
-    // not empty
-    for (size_t i = 0; i < n_buckets; i++) {
-        if (!buckets[i].empty()) { return false; }
-    }
-    // if there is no such bucket then
-    // the whole cache is empty
-    return true; 
+    // the ray cache is empty if there
+    // are no non-empty buckets
+    return non_empty_ids.empty();
 }

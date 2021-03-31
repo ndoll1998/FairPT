@@ -28,6 +28,9 @@ void Renderer::build_init_cache(
     float vph = vpw * (float)height / (float)width;
     // index to access the contribution buffer
     size_t idx = 0;
+    // vector to store ids of leafs that
+    // intersect with the current ray
+    std::vector<size_t> leaf_ids;
     // create a ray buffer and add 
     // all primary camera rays to it   
     for (size_t i = 0; i < height; i++) {
@@ -49,7 +52,7 @@ void Renderer::build_init_cache(
                 Ray r = cam.build_ray_from_uv(su * vph, sv * vpw);
                 // get all intersecting leafs and add
                 // the ray to all the corresponding buckets
-                std::vector<size_t> leaf_ids;
+                leaf_ids.clear();
                 bvh.get_intersecting_leafs(r, leaf_ids);
                 ray_cache.sort_into_buckets(r, c, leaf_ids);
             }
@@ -61,12 +64,13 @@ void Renderer::flush_cache(void) {
     // create a temporary hitrecord to compare
     // to the current best
     HitRecord tmp;
-    for (size_t i = 0; i < bvh.n_leafs(); i++) {
+    while (!ray_cache.empty()) {
+        // pop the next id of a non_empty
+        // bucket from the ray cache
+        size_t i = ray_cache.pop_non_empty();
         // get the i-th bucket from the cache
         // and clear it in the cache
         RayBucket& bucket = ray_cache.get_bucket(i);
-        // check if the bucket is already empty
-        if (bucket.empty()) { continue; }
         // get the primitive corresponding
         // to the current bucket
         const Primitive* prim = bvh.leaf_primitive(i);
@@ -95,6 +99,9 @@ void Renderer::build_next_cache(
     ContribInfo* contrib_buffer,
     const size_t& buffer_length
 ) {
+    // vector to store ids of leafs that
+    // intersect with the current ray
+    std::vector<size_t> leaf_ids;
     // compute all colors
     // and build all scatter rays
     for (size_t i = 0; i < buffer_length; i++) {
@@ -124,7 +131,7 @@ void Renderer::build_next_cache(
                 h.valid = false; 
                 // sort the scatter ray
                 // into the correct buckets
-                std::vector<size_t> leaf_ids;
+                leaf_ids.clear();
                 bvh.get_intersecting_leafs(scatter, leaf_ids);
                 ray_cache.sort_into_buckets(scatter, contrib, leaf_ids);
             }
@@ -138,10 +145,9 @@ void Renderer::build_next_cache(
 }
 
 void Renderer::render(FrameBuffer& fb) {
-    // create an array that stores
-    // all contribution infos of 
-    // the primary rays (secondary 
-    // rays also re-use these items)
+    // create an array that stores all contribution
+    // infos of the primary rays (secondary rays
+    // also re-use these items)
     size_t n_primary_rays = fb.width() * fb.height() * rpp;
     ContribInfo* contrib_buffer = new ContribInfo[n_primary_rays];
     // build the initial rays

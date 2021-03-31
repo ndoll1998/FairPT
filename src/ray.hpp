@@ -62,6 +62,8 @@ private:
     // array of ray buckets
     RayBucket* buckets;
     size_t n_buckets;
+    // vecor of non-empty buckets
+    std::vector<size_t> non_empty_ids;
 public: 
     // constructor
     RayCache(void) = default;
@@ -76,6 +78,10 @@ public:
     // functions to get the bucket
     // at a specific index
     RayBucket& get_bucket(const size_t& i);
+    // pop an id referencing a bucket
+    // that is not empty, i.e. contains
+    // rays that are yet to be casted
+    size_t pop_non_empty(void);
     // check if the cache is empty, i.e.
     // contains any rays at all
     bool empty(void) const;
