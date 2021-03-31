@@ -1,12 +1,13 @@
 #include "./primitive.hpp"
 #include "./ray.hpp"
+#include "./mesh.hpp"
 #include <algorithm>
 #include <numeric>
 #include <queue>
 #include <math.h>
 
 // helper functions for packet vectors
-void cross(
+inline void cross(
     std::array<Vec4f, 3>& result, 
     const std::array<Vec4f, 3>& a, 
     const std::array<Vec4f, 3>& b
@@ -16,14 +17,14 @@ void cross(
     result[2] = (a[0] * b[1]) - (a[1] * b[0]);
 }
 
-Vec4f dot(
+inline Vec4f dot(
     const std::array<Vec4f, 3>& a, 
     const std::array<Vec4f, 3>& b
 ) {
     return a[0].fmadd(b[0], a[1].fmadd(b[1], a[2] * b[2]));
 }
 
-void sub(
+inline void sub(
     std::array<Vec4f, 3>& result,
     const std::array<Vec4f, 3>& a,
     const std::array<Vec4f, 3>& b
@@ -53,25 +54,18 @@ Vec3f AABB::center(void) const {
 
 bool AABB::cast(const Ray& r) const
 {
-
     const Vec3f l1 = (min - r.origin) / r.direction;
-    const Vec3f l2 = (max - r.origin) / r.direction;
-    
+    const Vec3f l2 = (max - r.origin) / r.direction;   
     const Vec4f filtered_l1a = l1.min(Vec3f::inf);
     const Vec4f filtered_l2a = l2.min(Vec3f::inf);
-
     const Vec4f filtered_l1b = l1.max(Vec3f::ninf);
     const Vec4f filtered_l2b = l2.max(Vec3f::ninf);
-
     Vec4f lmax = filtered_l1a.max(filtered_l2a);
     Vec4f lmin = filtered_l1b.min(filtered_l2b);
-    
     lmax = lmax.min(lmax.rotate());
     lmin = lmin.max(lmin.rotate());
-
     lmax = lmax.min(_mm_movehl_ps(lmax, lmax));
     lmin = lmin.max(_mm_movehl_ps(lmin, lmin));
-    
     return _mm_comige_ss(lmax, Vec4f::zeros) & _mm_comige_ss(lmax, lmin);
 }
 
@@ -178,8 +172,8 @@ bool TriangleCollection::cast(
     HitRecord& record
 ) const {
     // values to mark the current best hit
-    float t;            // distance to the current closest intersection
-    size_t i;           // index of the triangle with the current best hit
+    float t;    // distance to the current closest intersection
+    size_t i;   // index of the triangle with the current best hit
     bool hit = false;   // did the ray hit a triangle yet
     // check all triangle packets in list
     for (size_t k = 0; k < A.size(); k++) {
@@ -252,32 +246,35 @@ void TriangleCollection::push_back(const Triangle& T)
  *  Bounding Volume Hierarchy
  */
 
-
 BVH::BVH(
-    const std::vector<Triangle>& tris,
+    const std::vector<Triangle*>& tris,
     const size_t& max_depth,
     const size_t& min_size
 ) {
     // compute the depth of the tree
     depth = ceil(log2f((float)tris.size()));
     depth = (depth > max_depth)? max_depth : depth;
-    // compute the number of inner and leaf nodes
+    // compute the number of inner and total nodes
     n_inner_nodes = pow(2, depth) - 1;
     n_total_nodes = pow(2, depth+1) - 1;
+    // the number of leaf nodes is initially
+    // set to zero but incremented whenever
+    // a leaf node is created
+    n_leaf_nodes = 0;
     // allocate memory for the binary tree
     tree = new bvh_node[n_total_nodes];
     // allocate memory to store
     //  - the primitive assignment of inner nodes
     //  - if the node is a valid inner node
-    std::vector<Triangle>* tmp_tris_assign = new std::vector<Triangle>[n_inner_nodes];
-    bool* valid_inner = new bool[n_inner_nodes];
+    std::vector<Triangle*> tmp_tris_assign[n_inner_nodes];
+    bool valid_inner[n_inner_nodes];
     
     // helper function to set the value of
     // a node during construction of the tree
     auto set_node = [this, &tmp_tris_assign, &valid_inner, &min_size](
         const size_t& i,
-        const std::vector<Triangle>::const_iterator& begin,
-        const std::vector<Triangle>::const_iterator& end
+        const std::vector<Triangle*>::const_iterator& begin,
+        const std::vector<Triangle*>::const_iterator& end
     ) {
         // initially mark the current node as invalid
         // provided that it is not in the last layer
@@ -292,15 +289,20 @@ BVH::BVH(
         // this is only violated if the initial
         // primitive list that is passed to the
         // bounding Volume Hierarchy is empty
-        if (d == 0) { return; }
-        // create primitive list storing the
-        // the primitives in the given iterator
-        std::vector<Triangle>* cur_tris_ptr = new std::vector<Triangle>(begin, end);
+        if (d == 0) {
+            // note that in this case the node
+            // is a leaf node with invalid id 
+            tree[i] = { AABB(), true, (size_t)-1 };
+            return;
+        }
+        // create a vector storing the
+        // triangles in the given iterator
+        std::vector<Triangle*> cur_tris(begin, end);
         // build the axis aligned bounding box
         // that contains all triangles in the vector
-        AABB aabb = cur_tris_ptr->at(0).build_aabb();
-        for (const Triangle& t : *cur_tris_ptr) {
-            AABB tmp = t.build_aabb();
+        AABB aabb = cur_tris[0]->build_aabb();
+        for (const Triangle* t : cur_tris) {
+            AABB tmp = t->build_aabb();
             aabb.min = aabb.min.min(tmp.min);
             aabb.max = aabb.max.max(tmp.max);
         }
@@ -310,24 +312,24 @@ BVH::BVH(
         //  - the minumum number of primitives would be 
         //    violated by splitting the node again
         if ((i >= n_inner_nodes) || (d < min_size * 2)) {
-            // pack triangles from vector into a
-            // triangle collection and update the node
-            TriangleCollection* tri_col = new TriangleCollection(begin, end);
-            tree[i] = { aabb, tri_col };
+            // set the node of the tree to be a leaf node
+            tree[i] = { aabb, true, n_leaf_nodes++ };
+            // pack triangles from vector into a collection
+            TriangleCollection tris_col;
+            std::for_each(begin, end, [&tris_col](const Triangle* t) { tris_col.push_back(*t); });
+            // push the triangle collection
+            leaf_tris_col.push_back(tris_col);
         } else {
             // if none of the above statements hold true
             // then the current node is an inner node
-            tree[i] = { aabb, nullptr };
-            tmp_tris_assign[i] = *cur_tris_ptr;
+            tree[i] = { aabb, false, (size_t)-1 };
+            tmp_tris_assign[i] = cur_tris;
             valid_inner[i] = true;
 		}
-        // clear memory
-		delete cur_tris_ptr;
     };
 
     // set root of the tree
     set_node(0, tris.begin(), tris.end());
-
     // build binary tree in top-down fashion
     // starting at the root and splitting it up
     for (size_t i = 0; i < n_inner_nodes; i++) {
@@ -341,15 +343,15 @@ BVH::BVH(
         
         // get the list of triangles assigned
         // to the current inner node
-        std::vector<Triangle> node_tris = tmp_tris_assign[i];
+        std::vector<Triangle*> node_tris = tmp_tris_assign[i];
         
         // collect the center points of all
         // primitves in the current node
         std::vector<Vec3f> vecs; vecs.reserve(node_tris.size());
-        for (const Triangle& p : node_tris)
-            vecs.push_back(p.build_aabb().center());
+        for (const Triangle* p : node_tris)
+            vecs.push_back(p->build_aabb().center());
         // compute their variance for each dimension
-        float inv = (1.0f / vecs.size());
+        Vec3f inv = Vec3f(1.0f / vecs.size());
         Vec3f mean = std::accumulate(vecs.begin(), vecs.end(), Vec3f::zeros) * inv;
         for (Vec3f& v : vecs) { v = v - mean; v = v * v; }
         Vec3f var = std::accumulate(vecs.begin(), vecs.end(), Vec3f::zeros) * inv;
@@ -361,39 +363,29 @@ BVH::BVH(
                     ( (z > y)? 2 : 1 ) ;
         // create comparator for choosen axis
         auto comp = [&axis](
-            const Triangle& t1, 
-            const Triangle& t2
+            const Triangle* t1, 
+            const Triangle* t2
         ) -> bool {
-            return t1.build_aabb().center()[axis] < t2.build_aabb().center()[axis]; 
+            return t1->build_aabb().center()[axis] < t2->build_aabb().center()[axis]; 
         };
         // find median along choosen axis
-        std::vector<Triangle>::iterator begin = node_tris.begin();
-        std::vector<Triangle>::iterator median = node_tris.begin() + node_tris.size() / 2;
-        std::vector<Triangle>::iterator end = node_tris.end();
+        std::vector<Triangle*>::iterator begin = node_tris.begin();
+        std::vector<Triangle*>::iterator median = node_tris.begin() + node_tris.size() / 2;
+        std::vector<Triangle*>::iterator end = node_tris.end();
         std::nth_element(begin, median, end, comp);
-        
         // build children nodes by splitting the
         // primitive list at the median
         set_node(2 * i + 1, begin, median);
         set_node(2 * i + 2, median, end);
     }
-    
-    // free memory
-    delete[] tmp_tris_assign;
-    delete[] valid_inner;
 }
 
 BVH::~BVH(void)
 {
-    // delete the primitive lists
-    // associated to leaf nodes
-    for (size_t i = 0; i < n_total_nodes; i++)
-    	if (tree[i].tris_ptr) { delete tree[i].tris_ptr; }
+    // free the memory allocated
+    // to store the tree
     delete[] tree;
 }
-
-#include <iostream>
-using namespace std;
 
 void BVH::get_intersecting_leafs(
     const Ray& ray,
@@ -419,10 +411,10 @@ void BVH::get_intersecting_leafs(
             // check if the node is a leaf node
             // by testing if it has any triangles
             // assigned to it
-            if (node.tris_ptr) {
+            if (node.is_leaf) {
                 // add the node to the leaf ids vector
-                leaf_ids.push_back(i);
-            } else {
+                leaf_ids.push_back(node.leaf_id);
+            } else if (i < n_inner_nodes) {
                 // add all children of the current node
                 // to the queue to check them later
                 q.push(2 * i + 1);
@@ -436,13 +428,14 @@ const Primitive* BVH::leaf_primitive(
     const size_t& i
 ) const {
     // return the triangle collection assigned
-    // to the node with the given index in the tree
-    return tree[i].tris_ptr;
+    // to the node with the given leaf index
+    return &leaf_tris_col[i];
 }
 
 size_t BVH::n_leafs(void) const {
-    // leaf nodes are exactly those nodes
-    // of a tree that are not inner nodes
-    return n_total_nodes - n_inner_nodes;
+    // return the number of leaf nodes
+    // that were created during construction
+    // of the tree
+    return n_leaf_nodes;
 }
 

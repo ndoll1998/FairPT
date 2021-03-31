@@ -14,7 +14,7 @@ Renderer::Renderer(
     bvh(scene.bvh()),
     rpp(rpp),
     max_rdepth(max_rdepth),
-    ray_cache(scene.bvh().n_leafs())
+    ray_cache(bvh.n_leafs())
 {}
 
 void Renderer::build_init_cache(
@@ -58,6 +58,9 @@ void Renderer::build_init_cache(
 }
 
 void Renderer::flush_cache(void) {
+    // create a temporary hitrecord to compare
+    // to the current best
+    HitRecord tmp;
     for (size_t i = 0; i < bvh.n_leafs(); i++) {
         // get the i-th bucket from the cache
         // and clear it in the cache
@@ -71,17 +74,21 @@ void Renderer::flush_cache(void) {
         // list of primitives
         while (!bucket.empty()) {
             // get the current ray-contrib pair
+            // and a reference to the stored hitrecord
             RayContribPair pair = bucket.pop();
+            HitRecord& record = pair.contrib->hit_record;
             // cast the packet against the
-            // primitive and store the hitrecord
-            // in the contributon info
-            prim->cast(pair.ray, pair.contrib->hit_record);            
-            // note that the update of the
-            // hitrecord incorporates the 
-            // previous hitrecord
+            // primitive and store the closest
+            // valid hitrecord in the pair
+            if (prim->cast(pair.ray, tmp) && (
+                    (!record.valid && tmp.valid) ||
+                    (record.valid && tmp.valid && (record.t > tmp.t))
+               )) { record = tmp; }
+            // reset the temporary hitrecord
+            // for the next iteration
+            tmp.valid = false;
         }
     }
-
 }
 
 void Renderer::build_next_cache(

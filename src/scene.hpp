@@ -13,7 +13,7 @@ private:
 public:
     // constructors
     Scene(
-        const std::vector<Triangle>& triangles  // vector of all triangles in the scene
+        const std::vector<Triangle*>& triangles  // vector of all triangles in the scene
     );
     // getter
     const BVH& bvh(void) const;

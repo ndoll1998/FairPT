@@ -4,6 +4,8 @@
 // forward declarations
 struct Ray;
 class BVH;
+class Mesh;
+class TriangleCollection;
 // includes
 #include <array>
 #include <vector>
@@ -68,8 +70,6 @@ public:
  *  Triangle
  */
 
-// forward declaration
-class TriangleCollection;
 // triangle class implementing a boundable
 // object but not a primitive (rendering
 // single triangles is not supported)
@@ -89,9 +89,10 @@ public:
     // build bounding box completly
     // containing the triangle
     virtual AABB build_aabb(void) const;
-    // allow triangle collection to
+    // allow triangle collection and mesh to
     // access private members of a triangle
     friend TriangleCollection;
+    friend Mesh;
 };
 
 // combine a number of triangles into a
@@ -139,6 +140,7 @@ public:
 };
 
 
+
 /*
  *  Bounding Volume Hierarchy
  */
@@ -148,11 +150,16 @@ private:
     // struct defining a node of
     // the bvh tree
     struct bvh_node {
-        AABB aabb;                          // associated bounding box
-        TriangleCollection* tris_ptr = nullptr; // only leafs store primitives
+        AABB aabb;      // bounding box associated with the node
+        bool is_leaf;   // is the node a leaf node
+        size_t leaf_id; // the id assigned to the leaf
     };
+    // list of triangle collections
+    // associated with the leafs
+    std::vector<TriangleCollection> leaf_tris_col;
     // basic tree information
     size_t depth;
+    size_t n_leaf_nodes;
     size_t n_inner_nodes;
     size_t n_total_nodes;
     // memory to store the tree
@@ -160,7 +167,7 @@ private:
 public:
     // constructor and destructor
     BVH(
-        const std::vector<Triangle>& tris,  // triangles to store in the bvh
+        const std::vector<Triangle*>& tris,  // triangles to store in the bvh
         const size_t& max_depth,            // maximum depth of the bvh
         const size_t& min_size              // minimum number of primitives per leaf
     );
