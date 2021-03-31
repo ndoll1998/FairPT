@@ -33,7 +33,8 @@ Material::Material(
     is_fuzzy(fuzz > 0.0f), fuzz(fuzz),
     refl(refl), ior(ior), 
     transparent(transparent)
-{}
+{
+}
 
 bool Material::scatter(
     const HitRecord& h,
@@ -132,7 +133,23 @@ Lambertian::Lambertian(
         1.0f,       // index of refraction
         false       // transparent
     )
-{}
+{
+}
+
+Specular::Specular(
+    const txr::Texture* att,
+    const float& index
+) :
+    Material(
+        att,        // attenuation
+        nullptr,    // emittance
+        -1.0f,      // fuzzyness
+        -1.0f,      // reflectance
+        index,      // index of refraction
+        false       // transparent
+    )
+{
+}
 
 Light::Light(
     const txr::Texture* emit
@@ -145,7 +162,8 @@ Light::Light(
         0.0f,       // unused in
         false       // light materials
     )
-{}
+{
+}
 
 bool Light::scatter(
     const HitRecord& h,
@@ -154,4 +172,62 @@ bool Light::scatter(
     // light materials do not
     // generate secondary rays
     return false;
+}
+
+
+/*
+ *  Debugging Materials
+ */
+
+// set all material property values
+// to zeros since none of them are used
+// in debugging materials
+Debug::Debug(void) :
+    Material(
+        nullptr,
+        nullptr,
+        0.0f,
+        0.0f,
+        0.0f,
+        false
+    )
+{
+}
+
+bool Debug::scatter(const HitRecord& h, Ray& scatter) const 
+{
+    // debugging materials do not
+    // generate secondary rays
+    return false; 
+}
+
+// normal materials visualizing the surface normal
+// at the intersection point as color
+Vec3f Normal::emittance(const HitRecord& h) const 
+{
+    // return the (normalized) surface normal
+    // vector as the color value
+    return 0.5f * (h.n + Vec3f::ones);
+}
+
+// depth material showing the distance to the
+// intersection point as gray-scale color value
+Depth::Depth(
+    const float& min_dist,
+    const float& max_dist
+) : 
+    min_dist(min_dist),
+    max_dist(max_dist)
+{
+}
+
+Vec3f Depth::emittance(const HitRecord& h) const {
+    return Vec3f((h.t - min_dist) / max_dist);
+}
+
+// cosine material returning the cosine angle
+// between the incident ray and the surface normal
+// as gray-scale color value
+Vec3f Cosine::emittance(const HitRecord& h) const {
+    return h.v.dot(h.n);
 }

@@ -37,10 +37,10 @@ public:
     ) const;
     // method that returns the 
     // attenuation color of a ray
-    Vec3f attenuation(const HitRecord& h) const;
+    virtual Vec3f attenuation(const HitRecord& h) const;
     // method that returns the
     // emittance color
-    Vec3f emittance(const HitRecord& h) const;
+    virtual Vec3f emittance(const HitRecord& h) const;
 };
 
 // lambertian material has
@@ -48,6 +48,15 @@ public:
 class Lambertian : public Material {
 public:
     Lambertian(const txr::Texture* att);
+};
+
+// specular material
+class Specular : public Material {
+public:
+    Specular(
+        const txr::Texture* att, 
+        const float& index
+    );
 };
 
 // light material
@@ -61,6 +70,61 @@ public:
         const HitRecord& h,
         Ray& scatter
     ) const;
+};
+
+
+/*
+ *  Debug Materials
+ */
+
+class Debug : public Material {
+public:
+    // constructor
+    Debug(void);
+    // override scatter function
+    // and make debugging materials
+    // never generate secondary rays
+    virtual bool scatter(
+        const HitRecord& h,
+        Ray& scatter
+    ) const;
+    // debug materials only need to
+    // define an emittance function 
+    virtual Vec3f emittance(const HitRecord& h) const = 0;
+};
+
+// normal material visualizing the
+// surface normal
+class Normal : public Debug {
+public:
+    // emittance color is proportional to the
+    // surface normal vector at intersection
+    virtual Vec3f emittance(const HitRecord& h) const;
+};
+
+// depth material showing the
+// distance to the intersection
+// point as gray-scale color value
+class Depth : public Debug {
+private:
+    float min_dist, max_dist;
+public:
+    // constructor
+    Depth(
+        const float& min_dist,
+        const float& max_dist
+    );
+    // emittance is the distance to intersection
+    virtual Vec3f emittance(const HitRecord& h) const;
+};
+
+// cosine material visualizing the angle
+// between incident ray and surface normal
+class Cosine : public Debug {
+public:
+    // return cosine angle between incident ray direction
+    // and surface normal as gray-scale color vector
+    virtual Vec3f emittance(const HitRecord& h) const;
 };
 
 };
