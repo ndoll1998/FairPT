@@ -3,6 +3,7 @@
 
 // forward declarations
 struct Ray;
+class RayQueue;
 class BVH;
 class Mesh;
 class TriangleCollection;
@@ -167,7 +168,7 @@ private:
 public:
     // constructor and destructor
     BVH(
-        const std::vector<Triangle*>& tris,  // triangles to store in the bvh
+        const std::vector<Triangle*>& tris, // triangles to store in the bvh
         const size_t& max_depth,            // maximum depth of the bvh
         const size_t& min_size              // minimum number of primitives per leaf
     );
@@ -178,12 +179,18 @@ public:
         const Ray& r,                   // ray to test intersection with
         std::vector<size_t>& leaf_ids   // output vector of leaf ids
     ) const;
-    // return the primitive stored 
-    // in a specific leaf of the tree
-    const Primitive* leaf_primitive(const size_t& i) const;
-    // get the number of leaf nodes
-    // in the bvh tree
-    size_t n_leafs(void) const;
+    // vector over the primitives stored
+    // in the leafs of the hierarchy
+    const Primitive* get_primitive(const size_t& i) const;
+    // sort rays into buckets where each
+    // bucket corresponds to one leaf
+    void sort_rays_by_leafs(
+        const RayQueue& rays,
+        std::vector<RayQueue>& sorted
+    ) const;
+    // get the number of leaf nodes in
+    // the bounding volume hierarchy
+    const size_t& num_leafs(void) const;
 };
 
 #endif // H_PRIMITIVE

@@ -387,55 +387,54 @@ BVH::~BVH(void)
     delete[] tree;
 }
 
-void BVH::get_intersecting_leafs(
-    const Ray& ray,
-    std::vector<size_t>& leaf_ids
+const Primitive* BVH::get_primitive(const size_t& i) const
+{
+    // return a pointer to the primitive
+    // of the given leaf referenced by id
+    return &leaf_tris_col[i];
+}
+
+void BVH::sort_rays_by_leafs(
+    const RayQueue& rays,
+    std::vector<RayQueue>& sorted
 ) const {
-    // make sure the leaf ids vector
-    // is initially empty
-    leaf_ids.clear();
     // create a queue to hold all inner nodes
     // that need to be checked during traversal
     std::queue<size_t> q;
-    q.push(0);      // add root node
-    // traverse the tree
-    while (!q.empty()) {
-        // get the next node to process
-        // and remove it from the queue
-        size_t i = q.front();
-        bvh_node node = tree[i];
-        q.pop();
-        // check if the ray intersects with
-        // the current node
-        if (node.aabb.cast(ray)) {
-            // check if the node is a leaf node
-            // by testing if it has any triangles
-            // assigned to it
-            if (node.is_leaf) {
-                // add the node to the leaf ids vector
-                leaf_ids.push_back(node.leaf_id);
-            } else if (i < n_inner_nodes) {
-                // add all children of the current node
-                // to the queue to check them later
-                q.push(2 * i + 1);
-                q.push(2 * i + 2);
+    for (const Ray& ray : rays) {
+        // start with the leaf node
+        q.push(0);
+        // traverse the tree
+        while (!q.empty()) {
+            // get the next node to process
+            // and remove it from the queue
+            size_t i = q.front();
+            bvh_node node = tree[i];
+            q.pop();
+            // check if the ray intersects with
+            // the current node
+            if (node.aabb.cast(ray)) {
+                // check if the node is a leaf node
+                // by testing if it has any triangles
+                // assigned to it
+                if (node.is_leaf) {
+                    // push the ray into the queue
+                    // that corresponds to the leaf node
+                    sorted[node.leaf_id].push_back(ray);
+                } else if (i < n_inner_nodes) {
+                    // add all children of the current node
+                    // to the queue to check them later
+                    q.push(2 * i + 1);
+                    q.push(2 * i + 2);
+                }
             }
         }
     }
 }
 
-const Primitive* BVH::leaf_primitive(
-    const size_t& i
-) const {
-    // return the triangle collection assigned
-    // to the node with the given leaf index
-    return &leaf_tris_col[i];
-}
-
-size_t BVH::n_leafs(void) const {
-    // return the number of leaf nodes
-    // that were created during construction
-    // of the tree
+const size_t& BVH::num_leafs(void) const {
+    // return the number of leaf nodes that were
+    // created during construction of the tree
     return n_leaf_nodes;
 }
 

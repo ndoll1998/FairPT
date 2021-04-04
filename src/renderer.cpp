@@ -14,11 +14,12 @@ Renderer::Renderer(
     bvh(scene.bvh()),
     rpp(rpp),
     max_rdepth(max_rdepth),
-    ray_cache(bvh.n_leafs())
-{}
+    sorted_rays(bvh.num_leafs())
+{
+}
 
-void Renderer::build_init_cache(
-    ContribInfo* contrib_buffer,
+void Renderer::build_primary_rays(
+    RayContrib* contrib_buffer,
     const size_t& width,        // width of the frame to render
     const size_t& height        // height of the frame to render
 ) {
@@ -28,9 +29,6 @@ void Renderer::build_init_cache(
     float vph = vpw * (float)height / (float)width;
     // index to access the contribution buffer
     size_t idx = 0;
-    // vector to store ids of leafs that
-    // intersect with the current ray
-    std::vector<size_t> leaf_ids;
     // create a ray buffer and add 
     // all primary camera rays to it   
     for (size_t i = 0; i < height; i++) {
@@ -38,10 +36,6 @@ void Renderer::build_init_cache(
             // build all rays that go through
             // the current pixel (i, j)
             for (size_t k = 0; k < rpp; k++) {
-                // get a reference to the
-                // contribution info associated
-                // with the current primary ray
-                ContribInfo* c = contrib_buffer + (idx++);
                 // fill a 2x2 sub-pixel grid
                 // and add a noise term
                 size_t pi = k / 2 % 2, pj = k % 2;                
@@ -50,63 +44,71 @@ void Renderer::build_init_cache(
                 // build the ray with origin on the viewport
                 // and direction through the sub-pixel
                 Ray r = cam.build_ray_from_uv(su * vph, sv * vpw);
-                // get all intersecting leafs and add
-                // the ray to all the corresponding buckets
-                leaf_ids.clear();
-                bvh.get_intersecting_leafs(r, leaf_ids);
-                ray_cache.sort_into_buckets(r, c, leaf_ids);
+                // set the pointer to the ray contribution
+                // of the primary ray and add it to the queue
+                r.contrib = contrib_buffer + (idx++);
+                rays.push_back(r);
             }
         }
     }
 }
 
-void Renderer::flush_cache(void) {
-    // create a temporary hitrecord to compare
-    // to the current best
-    HitRecord tmp;
-    while (!ray_cache.empty()) {
-        // pop the next id of a non_empty
-        // bucket from the ray cache
-        size_t i = ray_cache.pop_non_empty();
-        // get the i-th bucket from the cache
-        // and clear it in the cache
-        RayBucket& bucket = ray_cache.get_bucket(i);
-        // get the primitive corresponding
-        // to the current bucket
-        const Primitive* prim = bvh.leaf_primitive(i);
-        // cast all rays of the bucket to the
-        // list of primitives
-        while (!bucket.empty()) {
-            // get the current ray-contrib pair
-            // and a reference to the stored hitrecord
-            RayContribPair pair = bucket.pop();
-            HitRecord& record = pair.contrib->hit_record;
-            // cast the packet against the
-            // primitive and store the closest
-            // valid hitrecord in the pair
-            if (prim->cast(pair.ray, tmp) && (
-                    (!record.valid && tmp.valid) ||
-                    (record.valid && tmp.valid && (record.t > tmp.t))
-               )) { record = tmp; }
-            // reset the temporary hitrecord
-            // for the next iteration
-            tmp.valid = false;
+void Renderer::sort_rays_into_buckets(void)
+{
+    // let the bounding volume hierarchy sort
+    // the ray queue into the leaf buckets
+    bvh.sort_rays_by_leafs(rays, sorted_rays);
+    // clear the ray queue since all rays
+    // now are sorted into buckets
+    rays.clear();
+    // build the render buckets combining
+    // a queue of rays with the primitive
+    // to cast the rays to
+    for (size_t i = 0; i < sorted_rays.size(); ++i) {
+        RayQueue& queue = sorted_rays[i];
+        // add a render bucket from the current
+        // sorted queue if it is not empty
+        if (!queue.empty()) {
+            RenderBucket bucket = { queue, bvh.get_primitive(i) };
+            render_buckets.push_back(bucket);
         }
     }
 }
 
-void Renderer::build_next_cache(
-    ContribInfo* contrib_buffer,
+void Renderer::flush_buckets(void)
+{
+    // create a temporary hitrecord to compare
+    // to the current best
+    HitRecord tmp;
+    // process all render buckets
+    for (RenderBucket& bucket : render_buckets) {
+        // cast each ray against the associated primitive
+        // and update the hitrecord to discribe the closest hit
+        for (Ray& ray : bucket.rays) {
+            // get a reference to the current hitrecord
+            HitRecord& record = ray.contrib->hit_record;            
+            // cast and update the hitrecord
+            if (bucket.prim->cast(ray, tmp) && (
+                    (!record.valid && tmp.valid) ||
+                    (record.valid && tmp.valid && (record.t > tmp.t))
+            )) { record = tmp; }
+            // reset the temporary hitrecord
+            tmp.valid = false;
+        }
+        // clear the rays of the current bucket
+        bucket.rays.clear();
+    }
+}
+
+void Renderer::build_secondary_rays(
+    RayContrib* contrib_buffer,
     const size_t& buffer_length
 ) {
-    // vector to store ids of leafs that
-    // intersect with the current ray
-    std::vector<size_t> leaf_ids;
     // compute all colors
     // and build all scatter rays
     for (size_t i = 0; i < buffer_length; i++) {
         // get the current contribution info
-        ContribInfo* contrib = contrib_buffer + i;
+        RayContrib* contrib = contrib_buffer + i;
         HitRecord& h = contrib->hit_record;
         // check if the hit record is valid, i.e.
         // if the corresponding ray hit anything
@@ -129,11 +131,10 @@ void Renderer::build_next_cache(
                 // reset the hit record to
                 // reuse it for the scatter ray
                 h.valid = false; 
-                // sort the scatter ray
-                // into the correct buckets
-                leaf_ids.clear();
-                bvh.get_intersecting_leafs(scatter, leaf_ids);
-                ray_cache.sort_into_buckets(scatter, contrib, leaf_ids);
+                // set contribution of the scatter ray
+                // and push the ray into the queue
+                scatter.contrib = contrib;
+                rays.push_back(scatter);
             }
         } else {
             // the ray corresponding to the
@@ -144,27 +145,30 @@ void Renderer::build_next_cache(
     }
 }
 
-void Renderer::render(FrameBuffer& fb) {
+void Renderer::render(FrameBuffer& fb) 
+{
     // create an array that stores all contribution
     // infos of the primary rays (secondary rays
     // also re-use these items)
     size_t n_primary_rays = fb.width() * fb.height() * rpp;
-    ContribInfo* contrib_buffer = new ContribInfo[n_primary_rays];
-    // build the initial rays
-    // and sort them into buckets
-    build_init_cache(contrib_buffer, fb.width(), fb.height());
-    // main rendering loop iterating
-    // until the ray cache is empty
-    // or the maximum recursion depth
-    // is reached
+    RayContrib* contrib_buffer = new RayContrib[n_primary_rays];
+    // fill the ray queue with the initial
+    // primary camera rays
+    build_primary_rays(contrib_buffer, fb.width(), fb.height());
+    // main rendering loop iterating until the
+    // ray queue is empty or the maximum recursion
+    // depth is reached
     size_t rdepth = 0;
-    while ((!ray_cache.empty()) && (rdepth++ < max_rdepth)) {
-        // flush the ray cache to end
-        // up with all closest hit-records
-        flush_cache();
-        // fill the cache with all scatter
+    while ((!rays.empty()) && (rdepth++ < max_rdepth)) {
+        // sort the rays from the ray queue
+        // into render buckets
+        sort_rays_into_buckets();
+        // flush the render buckets, i.e.
+        // compute all closest hit-records
+        flush_buckets();
+        // fill the queue with scatter
         // rays from the current iteration
-        build_next_cache(contrib_buffer, n_primary_rays);
+        build_secondary_rays(contrib_buffer, n_primary_rays);
     }
     // index to access the contribution
     // buffer with

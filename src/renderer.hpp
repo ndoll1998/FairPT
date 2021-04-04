@@ -4,10 +4,19 @@
 // forward declarations
 class FrameBuffer;
 // includes
+#include <vector>
 #include "./ray.hpp"
 #include "./scene.hpp"
 #include "./camera.hpp"
 #include "./primitive.hpp"
+
+// structure holding the rays and the
+// primitive of a render bucket
+typedef struct RenderBucket {
+    RayQueue& rays;
+    const Primitive* prim;
+} RenderBucket;
+
 
 class Renderer {
 private:
@@ -21,26 +30,33 @@ private:
     // maximum number of secondary
     // rays per primary ray
     size_t max_rdepth;
-    // ray cache storing buckets that are filled 
-    // and cleared during the rendering process
-    RayCache ray_cache;
+    // ray queue storing rays that are created
+    // during the rendering process
+    RayQueue rays;
+    // ray buckets that rays get sorted into
+    // during the rendering process
+    std::vector<RayQueue> sorted_rays;
+    // queue of render buckets that are yet
+    // to be processed
+    std::vector<RenderBucket> render_buckets;
+
     // steps of the rendering pipeline
-    // 1) build all primary rays and
-    //    sort them into the buckets
-    void build_init_cache(
-        ContribInfo* contrib_buffer,
+    // 1) build all primary camera rays
+    void build_primary_rays(
+        RayContrib* contrib_buffer,
         const size_t& width,
         const size_t& height
     );
-    // 2) flush the ray buckets by 
-    //    casting each ray to the 
-    //    associated primitives
-    void flush_cache(void);
-    // 3) compute the color of
-    //    each ray and build
-    //    secondary rays
-    void build_next_cache(
-        ContribInfo* contrib_buffer,
+    // 2) sort the rays that are currently
+    //    stored in the ray queue into
+    //    render buckets
+    void sort_rays_into_buckets(void);
+    // 3) flush the render buckets 
+    void flush_buckets(void);
+    // 4) compute the color of each ray
+    //    and build the secondary rays
+    void build_secondary_rays(
+        RayContrib* contrib_buffer,
         const size_t& buffer_length
     );
 public:
