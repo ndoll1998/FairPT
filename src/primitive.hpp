@@ -3,8 +3,10 @@
 
 // forward declarations
 struct Ray;
+struct Ray4;
 class RayQueue;
 class BVH;
+class AABB4;
 class Mesh;
 class TriangleCollection;
 // includes
@@ -45,8 +47,28 @@ public:
     Vec3f center(void) const;
     // cast a ray to the bounding box
     bool cast(const Ray& r) const;
-    // allow bvh to access private members
+    // allow access to private members
     friend BVH;
+    friend AABB4;
+};
+
+// packet of four axis-aligned bounding boxes
+class AABB4 {
+private:
+    std::array<Vec4f, 3> low;
+    std::array<Vec4f, 3> high;
+public:
+    // constructors
+    AABB4(void) = default;
+    AABB4(
+        const AABB& A,
+        const AABB& B,
+        const AABB& C,
+        const AABB& D
+    );
+    // cast a ray to the bounding boxes
+    // and return a bit-level mask
+    unsigned int cast(const Ray4& r) const;
 };
 
 /*
@@ -150,7 +172,7 @@ private:
     // struct defining a node of
     // the bvh tree
     struct bvh_node {
-        AABB aabb[4];   // bounding box associated with the node
+        AABB4 aabb4;    // bounding boxes of the child nodes
         bool is_leaf;   // is the node a leaf node
         size_t leaf_id; // the id assigned to the leaf
     };

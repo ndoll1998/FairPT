@@ -2,6 +2,7 @@
 #define H_RAY
 
 // includes
+#include <array>
 #include <vector>
 #include "./vec.hpp"
 #include "./primitive.hpp"
@@ -27,9 +28,14 @@ typedef struct Ray {
     RayContrib* contrib;
 } Ray;
 
+// a packet of four rays usually
+// holding copies of the same ray
+typedef struct Ray4 {
+    std::array<Vec4f, 3> origin;
+    std::array<Vec4f, 3> direction;
+} Ray4;
+
 // shortcur for a vector of rays
-class RayQueue : public std::vector<Ray>
-{
-};
+class RayQueue : public std::vector<Ray> {};
 
 #endif // H_RAY

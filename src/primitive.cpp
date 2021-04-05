@@ -69,6 +69,46 @@ bool AABB::cast(const Ray& r) const
     return _mm_comige_ss(lmax, Vec4f::zeros) & _mm_comige_ss(lmax, lmin);
 }
 
+AABB4::AABB4(
+        const AABB& A,
+        const AABB& B,
+        const AABB& C,
+        const AABB& D
+) :
+    // set all low coordinates
+    low{
+        Vec4f(A.min[0], B.min[0], C.min[0], D.min[0]),
+        Vec4f(A.min[1], B.min[1], C.min[1], D.min[1]),
+        Vec4f(A.min[2], B.min[2], C.min[2], D.min[2])
+    },
+    // set all high coordinates
+    high{
+        Vec4f(A.max[0], B.max[0], C.max[0], D.max[0]),
+        Vec4f(A.max[1], B.max[1], C.max[1], D.max[1]),
+        Vec4f(A.max[2], B.max[2], C.max[2], D.max[2])
+    }
+{
+}
+
+unsigned int AABB4::cast(const Ray4& ray) const
+{
+    Vec4f t0x = (low[0] - ray.origin[0]) / ray.direction[0];
+    Vec4f t0y = (low[1] - ray.origin[1]) / ray.direction[1];
+    Vec4f t0z = (low[2] - ray.origin[2]) / ray.direction[2];
+    Vec4f t1x = (high[0] - ray.origin[0]) / ray.direction[0];
+    Vec4f t1y = (high[1] - ray.origin[1]) / ray.direction[1];
+    Vec4f t1z = (high[2] - ray.origin[2]) / ray.direction[2];
+    Vec4f minx = t0x.min(t1x);
+    Vec4f miny = t0y.min(t1y);
+    Vec4f minz = t0z.min(t1z);
+    Vec4f maxx = t0x.max(t1x);
+    Vec4f maxy = t0y.max(t1y);
+    Vec4f maxz = t0z.max(t1z);
+    Vec4f tmin_max = minx.max(miny.max(minz));
+    Vec4f tmax_min = maxx.min(maxy.min(maxz));
+    return _mm_movemask_ps(tmin_max < tmax_min);
+}
+
 /*
  *  Triangle
  */
@@ -383,10 +423,12 @@ BVH::BVH(
         std::nth_element(median, splitB, end, comp);
         // build children nodes by splitting the
         // primitive list at the median
-        tree[i].aabb[0] = set_node(4 * i + 1, begin, splitA);
-        tree[i].aabb[1] = set_node(4 * i + 2, splitA, median);
-        tree[i].aabb[2] = set_node(4 * i + 3, median, splitB);
-        tree[i].aabb[3] = set_node(4 * i + 4, splitB, end);
+        tree[i].aabb4 = AABB4(
+            set_node(4 * i + 1, begin, splitA),
+            set_node(4 * i + 2, splitA, median),
+            set_node(4 * i + 3, median, splitB),
+            set_node(4 * i + 4, splitB, end)
+        );
     }
 }
 
@@ -412,6 +454,11 @@ void BVH::sort_rays_by_leafs(
     // that need to be checked during traversal
     std::queue<size_t> q;
     for (const Ray& ray : rays) {
+        // build ray packet from ray
+        Ray4 ray_packet = {
+            { Vec4f(ray.origin[0]), Vec4f(ray.origin[1]), Vec4f(ray.origin[2]) },
+            { Vec4f(ray.direction[0]), Vec4f(ray.direction[1]), Vec4f(ray.direction[2]) }
+        };
         // start with the leaf node
         q.push(0);
         // traverse the tree
@@ -427,15 +474,16 @@ void BVH::sort_rays_by_leafs(
                 sorted[node.leaf_id].push_back(ray);
                 continue;
             }
-            // iterate over the child nodes
+            // cast the ray to the bounding box packet
+            unsigned int mask = node.aabb4.cast(ray_packet);
+            // for each box that intersect with
+            // the ray add the corresponding child
+            // to the queue
             for (size_t j = 0; j < 4; j++) {
-                // check if the ray intersects with the
-                // current child node
-                if (node.aabb[j].cast(ray)) {
-                    // add the current child to the
-                    // queue to process it later on
-                    q.push(4 * i + j + 1);
-                }
+                // check if the box intersects with the ray
+                if (mask & 1u) { q.push(4 * i + j + 1); }
+                // go on with the next box
+                mask >>= 1;
             }
         }
     }
