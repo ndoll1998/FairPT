@@ -59,6 +59,24 @@ public:
     );
 };
 
+// specular material
+class Metallic : public Material {
+public:
+    Metallic(
+        const txr::Texture* att, 
+        const float& fuzz
+    );
+};
+
+// transparent material
+class Dielectric : public Material {
+public:
+    Dielectric(
+        const txr::Texture* att, 
+        const float& index
+    );
+};
+
 // light material
 class Light : public Material {
 public:

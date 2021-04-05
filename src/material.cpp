@@ -17,6 +17,13 @@ Vec3f rand_unit_vec(void) {
     return Vec3f(r * cosf(a), r * sinf(a), z);
 }
 
+// schlick approximation
+float schlick(const float& c, const float& ri) {
+    float r0 = (1 - ri) / (1 + ri);
+    r0 = r0 * r0;
+    return r0 + (1 - r0) * powf(1-c, 5);
+}
+
 /*
  *  Material
  */
@@ -51,15 +58,8 @@ bool Material::scatter(
     Vec3f c = (face_in)? dt * nr : -1 * dt;
     // compute reflectance probability
     // including schlick approximation
-    // for transparent materials
-    float refl_p = refl;
-    if (transparent) { 
-        // keep the maximum value
-        // of both probabilities
-        // TODO: verify that 1 - schlick is actually correct
-        float p = 0.0f; // 1.0f - schlick(c[0], nr);
-        refl_p = (refl_p > p)? refl_p : p; 
-    }
+    float refl_p = (refl < 0.0f)? refl : schlick(c[0], nr);
+    refl_p = (refl_p > refl)? refl_p : refl;
     // test if the scatter ray
     // should come from reflection
     if (rng::randf() < refl_p) {
@@ -128,8 +128,8 @@ Lambertian::Lambertian(
     Material(
         att,        // attenuation
         nullptr,    // emittance
-        -1.0f,      // fuzzyness
         -1.0f,      // reflectance
+        -1.0f,      // fuzzyness
         1.0f,       // index of refraction
         false       // transparent
     )
@@ -143,10 +143,40 @@ Specular::Specular(
     Material(
         att,        // attenuation
         nullptr,    // emittance
-        -1.0f,      // fuzzyness
         -1.0f,      // reflectance
+        -1.0f,      // fuzzyness
         index,      // index of refraction
         false       // transparent
+    )
+{
+}
+
+Metallic::Metallic(
+    const txr::Texture* att,
+    const float& fuzz
+) :
+    Material(
+        att,        // attenuation
+        nullptr,    // emittance
+        1.0f,       // reflectance
+        fuzz,       // fuzzyness
+        1.0f,       // index of refraction
+        false       // transparent
+    )
+{
+}
+
+Dielectric::Dielectric(
+    const txr::Texture* att,
+    const float& index
+) :
+    Material(
+        att,        // attenuation
+        nullptr,    // emittance
+        -1.0f,      // reflectance
+        -1.0f,      // fuzzyness
+        index,      // index of refraction
+        true        // transparent
     )
 {
 }
