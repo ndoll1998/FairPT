@@ -134,7 +134,7 @@ private:
     // function to cast a ray to a single
     // packet of traingles
     static bool cast_ray_triangle(
-        const Ray& ray,
+        const Ray4& ray,
         const std::array<Vec4f, 3>& A,
         const std::array<Vec4f, 3>& U,
         const std::array<Vec4f, 3>& V,

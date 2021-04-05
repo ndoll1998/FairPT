@@ -148,7 +148,7 @@ TriangleCollection::TriangleCollection(
 
 
 bool TriangleCollection::cast_ray_triangle(
-    const Ray& ray,
+    const Ray4& ray,
     const std::array<Vec4f, 3>& A,
     const std::array<Vec4f, 3>& U,
     const std::array<Vec4f, 3>& V,
@@ -158,32 +158,21 @@ bool TriangleCollection::cast_ray_triangle(
     // Möller–Trumbore intersection algorithm
     // using simd instructions for parallel
     // processing of triangles rays at once
-    // TODO: share these along all triangles
-    std::array<Vec4f, 3> ray_orig = { 
-        Vec4f(ray.origin[0]), 
-        Vec4f(ray.origin[1]),
-        Vec4f(ray.origin[2])
-    };
-    std::array<Vec4f, 3> ray_dir = {
-        Vec4f(ray.direction[0]), 
-        Vec4f(ray.direction[1]),
-        Vec4f(ray.direction[2])
-    };
-
+    
     // check if the ray is parallel to triangle 
-    std::array<Vec4f, 3> h; cross(h, ray_dir, V); 
+    std::array<Vec4f, 3> h; cross(h, ray.direction, V); 
     Vec4f a = dot(U, h);
     Vec4f mask1 = (a < Vec4f::neps) | (Vec4f::eps < a);
     // check if intersection in
     // range of first edge
     Vec4f f = Vec4f::ones / a;
-    std::array<Vec4f, 3> s; sub(s, ray_orig, A);
+    std::array<Vec4f, 3> s; sub(s, ray.origin, A);
     Vec4f u = dot(s, h) * f;
     Vec4f mask2 = (Vec4f::zeros < u) & (u < Vec4f::ones);
     // check if intersection is
     // in range of both edges
     std::array<Vec4f, 3> q; cross(q, s, U);
-    Vec4f v = dot(ray_dir, q) * f;
+    Vec4f v = dot(ray.direction, q) * f;
     Vec4f mask3 = (Vec4f::zeros < v) & ((u + v) < Vec4f::ones);
     // compute the distance between the origin
     // of the ray and the intersection point
@@ -211,6 +200,11 @@ bool TriangleCollection::cast(
     const Ray& ray,
     HitRecord& record
 ) const {
+    // build ray-packet from ray
+    Ray4 ray_packet = {
+        { Vec4f(ray.origin[0]), Vec4f(ray.origin[1]), Vec4f(ray.origin[2]) },
+        { Vec4f(ray.direction[0]), Vec4f(ray.direction[1]), Vec4f(ray.direction[2]) }
+    }; 
     // values to mark the current best hit
     float t;    // distance to the current closest intersection
     size_t i;   // index of the triangle with the current best hit
@@ -224,7 +218,7 @@ bool TriangleCollection::cast(
         const std::array<Vec4f, 3>& v = V[k];
         // cast the ray against the traingle packet
         float tmp_t = t; size_t tmp_j;
-        if (TriangleCollection::cast_ray_triangle(ray, a, u, v, tmp_t, tmp_j)) {
+        if (TriangleCollection::cast_ray_triangle(ray_packet, a, u, v, tmp_t, tmp_j)) {
             // update the current best if neccessary
             if ((t > tmp_t) || (!hit)) {
                 // keep the smaller distance and update the
