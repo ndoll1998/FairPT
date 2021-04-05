@@ -12,6 +12,7 @@ Renderer::Renderer(
     scene(scene),
     cam(cam),
     bvh(scene.bvh()),
+    primitives(scene.primitives()),
     rpp(rpp),
     max_rdepth(max_rdepth),
     sorted_rays(bvh.num_leafs())
@@ -69,7 +70,7 @@ void Renderer::sort_rays_into_buckets(void)
         // add a render bucket from the current
         // sorted queue if it is not empty
         if (!queue.empty()) {
-            RenderBucket bucket = { queue, bvh.get_primitive(i) };
+            RenderBucket bucket = { queue, primitives[i] };
             render_buckets.push_back(bucket);
         }
     }

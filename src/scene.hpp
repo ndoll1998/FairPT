@@ -3,20 +3,29 @@
 
 // includes
 #include <vector>
+#include "./bvh.hpp"
+#include "./mesh.hpp"
 #include "./primitive.hpp"
 
 class Scene {
 private:
     // the bounding volume hierarchy
-    // storing all primitives of the scene
-    const BVH _bvh;
+    // organizing all boundables in the scene
+    BVH* _bvh;
+    // the actual primitives
+    // note that each primitive corresponds
+    // to exactly one leaf node of the bvh
+    PrimitiveList _primitives;
+    // private method to initialize scene a scene
+    void init(const BoundableList& objects);    
 public:
-    // constructors
-    Scene(
-        const std::vector<Triangle*>& triangles  // vector of all triangles in the scene
-    );
-    // getter
+    // constructors / destructor
+    Scene(const BoundableList& objects);
+    Scene(const Mesh& mesh);
+    ~Scene(void);
+    // getters
     const BVH& bvh(void) const;
+    const PrimitiveList& primitives(void) const;
 };
 
 #endif // H_SCENE

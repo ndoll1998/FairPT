@@ -6,6 +6,7 @@ class FrameBuffer;
 // includes
 #include <vector>
 #include "./ray.hpp"
+#include "./bvh.hpp"
 #include "./scene.hpp"
 #include "./camera.hpp"
 #include "./primitive.hpp"
@@ -20,11 +21,12 @@ typedef struct RenderBucket {
 
 class Renderer {
 private:
-    // references to the scene, camera
-    // and the bounding volume hierarchy
+    // references to objects that are heavily
+    // used during the rendering process
     const Scene& scene;
     const Camera& cam;
     const BVH& bvh;
+    const PrimitiveList& primitives; 
     // number of rays per pixel
     size_t rpp;
     // maximum number of secondary

@@ -24,21 +24,11 @@ int main(void) {
     cam.vp_dist(1.35f + 1e-3f);
 
     // create all materials
-    mtl::Material* red = new mtl::Lambertian(
-        new txr::Constant(Vec3f(0.25f, 0.25f, 0.75f))
-    );
-    mtl::Material* blue = new mtl::Lambertian(
-        new txr::Constant(Vec3f(0.75f, 0.25f, 0.25f))
-    );
-    mtl::Material* gray = new mtl::Lambertian(
-        new txr::Constant(Vec3f(0.25f, 0.25f, 0.25f))
-    );
-    mtl::Material* white = new mtl::Lambertian(
-        new txr::Constant(Vec3f(0.75f, 0.75f, 0.75f))
-    );
-    mtl::Material* light = new mtl::Light(
-        new txr::Constant(Vec3f::ones * 3.0f)
-    );
+    mtl::Material* red = new mtl::Lambertian(new txr::Constant(Vec3f(0.25f, 0.25f, 0.75f)));
+    mtl::Material* blue = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.25f, 0.25f)));
+    mtl::Material* gray = new mtl::Lambertian(new txr::Constant(Vec3f(0.25f, 0.25f, 0.25f)));
+    mtl::Material* white = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.75f, 0.75f)));
+    mtl::Material* light = new mtl::Light(new txr::Constant(Vec3f::ones * 3.0f));
 
     // build the cornell box mesh
     Mesh cornell;
