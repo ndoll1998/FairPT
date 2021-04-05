@@ -79,6 +79,8 @@ int main(void) {
     Scene scene(cornell);
     Renderer renderer(scene, cam, 64, 10); 
     FrameBuffer fb(200, 200);
+
+    cout << "Rendering..." << endl;
  
     // render the scene
     auto start = chrono::steady_clock::now();

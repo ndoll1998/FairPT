@@ -49,7 +49,6 @@ public:
     friend BVH;
 };
 
-
 /*
  *  Primitive
  */
@@ -151,7 +150,7 @@ private:
     // struct defining a node of
     // the bvh tree
     struct bvh_node {
-        AABB aabb;      // bounding box associated with the node
+        AABB aabb[4];   // bounding box associated with the node
         bool is_leaf;   // is the node a leaf node
         size_t leaf_id; // the id assigned to the leaf
     };

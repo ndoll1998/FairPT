@@ -252,11 +252,11 @@ BVH::BVH(
     const size_t& min_size
 ) {
     // compute the depth of the tree
-    depth = ceil(log2f((float)tris.size()));
+    depth = ceil(log2f((float)tris.size()) / log2f(4.0f));
     depth = (depth > max_depth)? max_depth : depth;
     // compute the number of inner and total nodes
-    n_inner_nodes = pow(2, depth) - 1;
-    n_total_nodes = pow(2, depth+1) - 1;
+    n_inner_nodes = pow(4, depth) - 1;
+    n_total_nodes = pow(4, depth+1) - 1;
     // the number of leaf nodes is initially
     // set to zero but incremented whenever
     // a leaf node is created
@@ -275,7 +275,7 @@ BVH::BVH(
         const size_t& i,
         const std::vector<Triangle*>::const_iterator& begin,
         const std::vector<Triangle*>::const_iterator& end
-    ) {
+    ) -> AABB {
         // initially mark the current node as invalid
         // provided that it is not in the last layer
         // this will be overriden if the node
@@ -291,29 +291,22 @@ BVH::BVH(
         // bounding Volume Hierarchy is empty
         if (d == 0) {
             // note that in this case the node
-            // is a leaf node with invalid id 
-            tree[i] = { AABB(), true, (size_t)-1 };
-            return;
+            // is a leaf node with invalid id
+            tree[i].is_leaf = true;
+            tree[i].leaf_id = (size_t)-1;
+            return AABB();
         }
         // create a vector storing the
         // triangles in the given iterator
         std::vector<Triangle*> cur_tris(begin, end);
-        // build the axis aligned bounding box
-        // that contains all triangles in the vector
-        AABB aabb = cur_tris[0]->build_aabb();
-        for (const Triangle* t : cur_tris) {
-            AABB tmp = t->build_aabb();
-            aabb.min = aabb.min.min(tmp.min);
-            aabb.max = aabb.max.max(tmp.max);
-        }
-        // check if the node is a leaf node
-        // which means that either
-        //  - the node is at maximum depth
+        // check if the node is a leaf node, i.e.
+        //  - the node is at maximum depth or
         //  - the minumum number of primitives would be 
         //    violated by splitting the node again
         if ((i >= n_inner_nodes) || (d < min_size * 2)) {
             // set the node of the tree to be a leaf node
-            tree[i] = { aabb, true, n_leaf_nodes++ };
+            tree[i].is_leaf = true;
+            tree[i].leaf_id = n_leaf_nodes++;
             // pack triangles from vector into a collection
             TriangleCollection tris_col;
             std::for_each(begin, end, [&tris_col](const Triangle* t) { tris_col.push_back(*t); });
@@ -322,10 +315,21 @@ BVH::BVH(
         } else {
             // if none of the above statements hold true
             // then the current node is an inner node
-            tree[i] = { aabb, false, (size_t)-1 };
+            tree[i].is_leaf = false;
+            tree[i].leaf_id = (size_t)-1;
             tmp_tris_assign[i] = cur_tris;
             valid_inner[i] = true;
 		}
+        // build the axis aligned bounding box
+        // that contains all triangles assigned
+        // to the current node i
+        AABB aabb = cur_tris[0]->build_aabb();
+        for (const Triangle* t : cur_tris) {
+            AABB tmp = t->build_aabb();
+            aabb.min = aabb.min.min(tmp.min);
+            aabb.max = aabb.max.max(tmp.max);
+        }
+        return aabb;
     };
 
     // set root of the tree
@@ -370,13 +374,19 @@ BVH::BVH(
         };
         // find median along choosen axis
         std::vector<Triangle*>::iterator begin = node_tris.begin();
-        std::vector<Triangle*>::iterator median = node_tris.begin() + node_tris.size() / 2;
+        std::vector<Triangle*>::iterator splitA = begin + node_tris.size() / 4;
+        std::vector<Triangle*>::iterator median = begin + node_tris.size() / 2;
+        std::vector<Triangle*>::iterator splitB = median + node_tris.size() / 4;
         std::vector<Triangle*>::iterator end = node_tris.end();
         std::nth_element(begin, median, end, comp);
+        std::nth_element(begin, splitA, median, comp);
+        std::nth_element(median, splitB, end, comp);
         // build children nodes by splitting the
         // primitive list at the median
-        set_node(2 * i + 1, begin, median);
-        set_node(2 * i + 2, median, end);
+        tree[i].aabb[0] = set_node(4 * i + 1, begin, splitA);
+        tree[i].aabb[1] = set_node(4 * i + 2, splitA, median);
+        tree[i].aabb[2] = set_node(4 * i + 3, median, splitB);
+        tree[i].aabb[3] = set_node(4 * i + 4, splitB, end);
     }
 }
 
@@ -408,24 +418,23 @@ void BVH::sort_rays_by_leafs(
         while (!q.empty()) {
             // get the next node to process
             // and remove it from the queue
-            size_t i = q.front();
+            size_t i = q.front(); q.pop();
             bvh_node node = tree[i];
-            q.pop();
-            // check if the ray intersects with
-            // the current node
-            if (node.aabb.cast(ray)) {
-                // check if the node is a leaf node
-                // by testing if it has any triangles
-                // assigned to it
-                if (node.is_leaf) {
-                    // push the ray into the queue
-                    // that corresponds to the leaf node
-                    sorted[node.leaf_id].push_back(ray);
-                } else if (i < n_inner_nodes) {
-                    // add all children of the current node
-                    // to the queue to check them later
-                    q.push(2 * i + 1);
-                    q.push(2 * i + 2);
+            // check if the node is a valid leaf
+            if (node.is_leaf && (node.leaf_id < (size_t)-1)) {
+                // push the ray into the queue
+                // that corresponds to the leaf node
+                sorted[node.leaf_id].push_back(ray);
+                continue;
+            }
+            // iterate over the child nodes
+            for (size_t j = 0; j < 4; j++) {
+                // check if the ray intersects with the
+                // current child node
+                if (node.aabb[j].cast(ray)) {
+                    // add the current child to the
+                    // queue to process it later on
+                    q.push(4 * i + j + 1);
                 }
             }
         }
