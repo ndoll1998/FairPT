@@ -69,6 +69,52 @@ Mesh Mesh::load_obj(
 }
 
 /*
+ *  Parallelogram 2d and 3d
+ */
+
+Mesh Mesh::Parallelogram(
+    const Vec3f& A,
+    const Vec3f& B,
+    const Vec3f& C,
+    const mtl::Material* mat
+) {
+    Mesh mesh;
+    // mirror point A over edge BC
+    Vec3f D = B + C - A;
+    mesh.push_back(new Triangle(A, B, C, mat));
+    mesh.push_back(new Triangle(D, C, B, mat));
+    // return mesh
+    return mesh;
+}
+
+Mesh Mesh::Parallelepiped(
+    const Vec3f& A,
+    const Vec3f& B,
+    const Vec3f& C,
+    const Vec3f& D,
+    const mtl::Material* mat
+) {
+    // create a mesh and reserve
+    // space for the triangles
+    Mesh mesh;
+    mesh.reserve(2 * 6);
+    // top and bottom
+    Vec3f AD = D - A;
+    mesh.extend(Mesh::Parallelogram(A, B, C, mat));
+    mesh.extend(Mesh::Parallelogram(D, C + AD, B + AD, mat));
+    // left and right
+    Vec3f AB = B - A;
+    mesh.extend(Mesh::Parallelogram(A, C, D, mat));
+    mesh.extend(Mesh::Parallelogram(B, D + AB, C + AB, mat));
+    // front and back
+    Vec3f AC = C - A;
+    mesh.extend(Mesh::Parallelogram(A, D, B, mat));
+    mesh.extend(Mesh::Parallelogram(C, B + AC, D + AC, mat));
+    // return the mesh
+    return mesh;
+}
+
+/*
  *  Helpers
  */
 
@@ -90,6 +136,16 @@ Mesh& Mesh::swap_axes(
     return *this;
 }
 
+Mesh& Mesh::flip_normals(void)
+{
+    // swap the dimensions of the vertices of each triangle 
+    // (note that Mesh is a friend of triangle)
+    for (Triangle* t : *this) {
+        std::swap(t->B, t->C);
+    }
+    return *this;
+}
+
 Mesh& Mesh::mirror(
     const size_t& axis
 ) {
@@ -103,7 +159,8 @@ Mesh& Mesh::mirror(
     return *this;
 }
 
-Mesh& Mesh::translate(const Vec3f& off) {
+Mesh& Mesh::translate(const Vec3f& off)
+{
     // translate the vertices of each triangle 
     // (note that Mesh is a friend of triangle)
     for (Triangle* t : *this) {
@@ -114,7 +171,8 @@ Mesh& Mesh::translate(const Vec3f& off) {
     return *this;
 }
 
-Mesh& Mesh::scale(const float& value) {
+Mesh& Mesh::scale(const float& value)
+{
     // scale the vertices of each triangle
     // (note that Mesh is a friend of triangle)
     Vec3f vec_value(value);
