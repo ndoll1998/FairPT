@@ -14,75 +14,68 @@ Renderer::Renderer(
     bvh(scene.bvh()),
     primitives(scene.primitives()),
     rpp(rpp),
-    max_rdepth(max_rdepth),
-    sorted_rays(bvh.num_leafs())
+    max_rdepth(max_rdepth)
 {
 }
 
-void Renderer::build_primary_rays(
-    RayContrib* contrib_buffer,
-    const size_t& width,        // width of the frame to render
-    const size_t& height        // height of the frame to render
-) {
-    // compute the width and
-    // height of the viewport
-    float vpw = 2.0f * tanf(0.5f * cam.fov());
-    float vph = vpw * (float)height / (float)width;
-    // index to access the contribution buffer
-    size_t idx = 0;
-    // create a ray buffer and add 
-    // all primary camera rays to it   
-    for (size_t i = 0; i < height; i++) {
-        for (size_t j = 0; j < width; j++) {
-            // build all rays that go through
-            // the current pixel (i, j)
-            for (size_t k = 0; k < rpp; k++) {
-                // fill a 2x2 sub-pixel grid
-                // and add a noise term
-                size_t pi = k / 2 % 2, pj = k % 2;                
-                float su = (float)(i * 2 + pi + rng::randf()) / (2 * height) - 0.5f;
-                float sv = (float)(j * 2 + pj + rng::randf()) / (2 * width) - 0.5f;
-                // build the ray with origin on the viewport
-                // and direction through the sub-pixel
-                Ray r = cam.build_ray_from_uv(su * vph, sv * vpw);
-                // set the pointer to the ray contribution
-                // of the primary ray and add it to the queue
-                r.contrib = contrib_buffer + (idx++);
-                rays.push_back(r);
-            }
-        }
+void Renderer::build_pixel_rays(
+    RenderArgs& args,
+    const size_t& i,
+    const size_t& j,
+    const size_t& width,
+    const size_t& height,
+    const float& vpw,
+    const float& vph
+) const {
+    // build all rays that go through
+    // the current pixel (i, j)
+    for (size_t k = 0; k < rpp; k++) {
+        // fill a 2x2 sub-pixel grid
+        // and add a noise term
+        size_t pi = k / 2 % 2, pj = k % 2;                
+        float su = (float)(i * 2 + pi + rng::randf()) / (2 * height) - 0.5f;
+        float sv = (float)(j * 2 + pj + rng::randf()) / (2 * width) - 0.5f;
+        // build the ray with origin on the viewport
+        // and direction through the sub-pixel
+        Ray r = cam.build_ray_from_uv(su * vph, sv * vpw);
+        // set the pointer to the ray contribution
+        // of the primary ray and add it to the queue
+        r.contrib = args.contrib_buffer + k;
+        args.rays.push_back(r);
     }
 }
 
-void Renderer::sort_rays_into_buckets(void)
-{
+void Renderer::sort_rays_into_buckets(
+    RenderArgs& args
+) const {
     // let the bounding volume hierarchy sort
     // the ray queue into the leaf buckets
-    bvh.sort_rays_by_leafs(rays, sorted_rays);
+    bvh.sort_rays_by_leafs(args.rays, args.sorted_rays);
     // clear the ray queue since all rays
     // now are sorted into buckets
-    rays.clear();
+    args.rays.clear();
     // build the render buckets combining
     // a queue of rays with the primitive
     // to cast the rays to
-    for (size_t i = 0; i < sorted_rays.size(); ++i) {
-        RayQueue& queue = sorted_rays[i];
+    for (size_t i = 0; i < args.sorted_rays.size(); ++i) {
+        RayQueue& queue = args.sorted_rays[i];
         // add a render bucket from the current
         // sorted queue if it is not empty
         if (!queue.empty()) {
             RenderBucket bucket = { queue, primitives[i] };
-            render_buckets.push_back(bucket);
+            args.render_buckets.push_back(bucket);
         }
     }
 }
 
-void Renderer::flush_buckets(void)
-{
+void Renderer::flush_buckets(
+    RenderArgs& args
+) const {
     // create a temporary hitrecord to compare
     // to the current best
     HitRecord tmp;
     // process all render buckets
-    for (RenderBucket& bucket : render_buckets) {
+    for (RenderBucket& bucket : args.render_buckets) {
         // cast each ray against the associated primitive
         // and update the hitrecord to discribe the closest hit
         for (Ray& ray : bucket.rays) {
@@ -99,17 +92,18 @@ void Renderer::flush_buckets(void)
         // clear the rays of the current bucket
         bucket.rays.clear();
     }
+    // clear render buckets
+    args.render_buckets.clear();
 }
 
 void Renderer::build_secondary_rays(
-    RayContrib* contrib_buffer,
-    const size_t& buffer_length
-) {
+    RenderArgs& args
+) const {
     // compute all colors
     // and build all scatter rays
-    for (size_t i = 0; i < buffer_length; i++) {
+    for (size_t i = 0; i < args.buffer_length; i++) {
         // get the current contribution info
-        RayContrib* contrib = contrib_buffer + i;
+        RayContrib* contrib = args.contrib_buffer + i;
         HitRecord& h = contrib->hit_record;
         // make sure the color is not final
         if (contrib->is_final) { continue; }
@@ -137,7 +131,7 @@ void Renderer::build_secondary_rays(
                 // set contribution of the scatter ray
                 // and push the ray into the queue
                 scatter.contrib = contrib;
-                rays.push_back(scatter);
+                args.rays.push_back(scatter);
             }
         } else {
             // the ray corresponding to the
@@ -149,43 +143,36 @@ void Renderer::build_secondary_rays(
     }
 }
 
-void Renderer::render(FrameBuffer& fb) 
+void Renderer::render(FrameBuffer& fb) const 
 {
-    // create an array that stores all contribution
-    // infos of the primary rays (secondary rays
-    // also re-use these items)
-    size_t n_primary_rays = fb.width() * fb.height() * rpp;
-    RayContrib* contrib_buffer = new RayContrib[n_primary_rays];
-    // fill the ray queue with the initial
-    // primary camera rays
-    build_primary_rays(contrib_buffer, fb.width(), fb.height());
-    // main rendering loop iterating until the
-    // ray queue is empty or the maximum recursion
-    // depth is reached
-    size_t rdepth = 0;
-    while ((!rays.empty()) && (rdepth++ < max_rdepth)) {
-        // sort the rays from the ray queue
-        // into render buckets
-        sort_rays_into_buckets();
-        // flush the render buckets, i.e.
-        // compute all closest hit-records
-        flush_buckets();
-        // fill the queue with scatter
-        // rays from the current iteration
-        build_secondary_rays(contrib_buffer, n_primary_rays);
-    }
-    // index to access the contribution
-    // buffer with
-    size_t idx = 0;
-    // write all compute colors to
-    // the framebuffer
+    // initialize a render args object
+    RenderPixelArgs args;
+    args.contrib_buffer = new RayContrib[rpp];
+    args.buffer_length = rpp;
+    args.sorted_rays = std::vector<RayQueue>(bvh.num_leafs());
+    // compute the width and height of the viewport
+    // to easily build the primary camera rays
+    float vpw = 2.0f * tanf(0.5f * cam.fov());
+    float vph = vpw * (float)fb.height() / (float)fb.width();    
+    // render all pixels
     for (size_t i = 0; i < fb.height(); i++) {
         for (size_t j = 0; j < fb.width(); j++) {
+            // add all the primary rays through
+            // the current pixel to the render args
+            build_pixel_rays(args, i, j, fb.width(), fb.height(), vpw, vph);
+            // render the pixel and reset the args
+            // to reuse them for the next pixel
+            render(args);
+            args.rays.clear();
             // average the color over all rays
             // that go through the current pixel
             Vec3f c = Vec3f::zeros;
-            for (size_t k = 0; k < rpp; k++)
-                c = c + contrib_buffer[idx++].color;
+            for (size_t k = 0; k < rpp; k++) {
+                RayContrib& contrib = args.contrib_buffer[k];
+                // reset contribution for the upcoming rays
+                c = c + contrib.color;
+                contrib = RayContrib();
+            }
             c = c / (float)rpp;
             // apply postprocessing including
             // a simple approxiamtion of
@@ -195,5 +182,27 @@ void Renderer::render(FrameBuffer& fb)
             // write the color to the framebuffer
             fb.set_pixel(i, j, c[0], c[1], c[2]);
         }
+    }
+    // free memory
+    delete[] args.contrib_buffer;
+}
+
+void Renderer::render(
+    RenderArgs& args
+) const {
+    // main rendering loop iterating until the
+    // ray queue is empty or the maximum recursion
+    // depth is reached
+    size_t rdepth = 0;
+    while ((!args.rays.empty()) && (rdepth++ < max_rdepth)) {
+        // sort the rays from the ray queue
+        // into render buckets
+        sort_rays_into_buckets(args);
+        // flush the render buckets, i.e.
+        // compute all closest hit-records
+        flush_buckets(args);
+        // fill the queue with scatter
+        // rays from the current iteration
+        build_secondary_rays(args);
     }
 }
