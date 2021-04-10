@@ -1,5 +1,5 @@
 # FairPT
-A fairly optimized cpu-only path tracer
+A fairly optimized cpu-only path tracer written in pure C++.
 
 ![Cornell](img/cornell.bmp)![Suzanne](img/suzanne.bmp)![Lucy](img/lucy.bmp)
 
