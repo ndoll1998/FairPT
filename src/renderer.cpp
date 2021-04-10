@@ -90,11 +90,11 @@ void Renderer::flush_buckets(void)
             HitRecord& record = ray.contrib->hit_record;            
             // cast and update the hitrecord
             if (bucket.prim->cast(ray, tmp) && (
-                    (!record.valid && tmp.valid) ||
-                    (record.valid && tmp.valid && (record.t > tmp.t))
+                    (tmp.is_valid && !record.is_valid) ||
+                    (tmp.is_valid && record.is_valid && (record.t > tmp.t))
             )) { record = tmp; }
             // reset the temporary hitrecord
-            tmp.valid = false;
+            tmp.is_valid = false;
         }
         // clear the rays of the current bucket
         bucket.rays.clear();
@@ -111,9 +111,11 @@ void Renderer::build_secondary_rays(
         // get the current contribution info
         RayContrib* contrib = contrib_buffer + i;
         HitRecord& h = contrib->hit_record;
+        // make sure the color is not final
+        if (contrib->is_final) { continue; }
         // check if the hit record is valid, i.e.
         // if the corresponding ray hit anything
-        if (h.valid) {
+        if (h.is_valid) {
             // get the attenuation and emittance
             // color of the material at the hit point
             Vec3f att = h.mat->attenuation(h);
@@ -131,7 +133,7 @@ void Renderer::build_secondary_rays(
                 scatter.origin = Vec3f::eps.fmadd(scatter.direction, scatter.origin);
                 // reset the hit record to
                 // reuse it for the scatter ray
-                h.valid = false; 
+                h.is_valid = false; 
                 // set contribution of the scatter ray
                 // and push the ray into the queue
                 scatter.contrib = contrib;
@@ -142,6 +144,7 @@ void Renderer::build_secondary_rays(
             // contribution info did not hit
             // any primitive
             // contrib.color = contrib.color + contrib.albedo;
+            contrib->is_final = true;
         }
     }
 }

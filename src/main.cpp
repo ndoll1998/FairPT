@@ -1,6 +1,5 @@
 #include <chrono>
 #include <iostream>
-#include <vector>
 #include "./vec.hpp"
 #include "./camera.hpp"
 #include "./scene.hpp"
@@ -86,10 +85,10 @@ int main(void) {
 
     // build scene and renderer
     Scene scene(cornell);
-    Renderer renderer(scene, cam, 256, 10);
+    Renderer renderer(scene, cam, 64, 10);
     FrameBuffer fb(200, 200);
 
-    cout << "Rendering... ";
+    cout << "Rendering... " << flush;
     // render the scene
     auto start = chrono::steady_clock::now();
     renderer.render(fb);

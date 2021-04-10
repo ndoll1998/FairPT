@@ -21,7 +21,7 @@ typedef struct HitRecord {
     Vec3f p;    // point of intersection
     Vec3f n;    // surface normal at intersection
     Vec3f v;    // direction of incident ray
-    bool valid = false;         // is the hit valid
+    bool is_valid = false;      // is the hit valid
     const mtl::Material* mat;   // surface material
 } HitRecord;
 

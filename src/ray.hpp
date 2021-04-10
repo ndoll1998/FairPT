@@ -13,6 +13,7 @@
 typedef struct RayContrib {
     Vec3f color = Vec3f::zeros;     // color after i (scatter-) rays
     Vec3f albedo = Vec3f::ones;     // color influence of the current ray
+    bool is_final = false;          // is the color final
     HitRecord hit_record;           // hit-record of the currentl ray
 } RayContrib;
 
