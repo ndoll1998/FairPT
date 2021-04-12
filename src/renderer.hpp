@@ -39,7 +39,13 @@ typedef struct RenderArgs {
     // the queue of render buckets that
     // are yet to processed by the renderer
     RenderQueue render_buckets;
-} RenderPixelArgs;
+    // constructor and destructor
+    RenderArgs(
+        const size_t& n_rays,
+        const BVH& bvh
+    );
+    ~RenderArgs(void);
+} RenderArgs;
 
 class Renderer {
 private:

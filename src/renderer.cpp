@@ -1,7 +1,35 @@
 #include "./renderer.hpp"
 #include "./framebuffer.hpp"
+#include <thread>
+#include <threadpool.h>
 #include <rng.hpp>
 #include <math.h>
+
+/*
+ *  Render Args
+ */
+
+RenderArgs::RenderArgs(
+    const size_t& n_rays,
+    const BVH& bvh
+) {
+    // allocate memory for contributions of each ray
+    contrib_buffer = new RayContrib[n_rays];
+    buffer_length = n_rays;
+    // initialize vectors
+    rays.reserve(n_rays);
+    sorted_rays = std::vector<RayQueue>(bvh.num_leafs());
+}
+
+RenderArgs::~RenderArgs(void) {
+    // free memory
+    delete[] contrib_buffer;
+}
+
+
+/*
+ *  Renderer
+ */
 
 Renderer::Renderer(
     const Scene& scene,
@@ -145,46 +173,54 @@ void Renderer::build_secondary_rays(
 
 void Renderer::render(FrameBuffer& fb) const 
 {
-    // initialize a render args object
-    RenderPixelArgs args;
-    args.contrib_buffer = new RayContrib[rpp];
-    args.buffer_length = rpp;
-    args.sorted_rays = std::vector<RayQueue>(bvh.num_leafs());
     // compute the width and height of the viewport
     // to easily build the primary camera rays
     float vpw = 2.0f * tanf(0.5f * cam.fov());
     float vph = vpw * (float)fb.height() / (float)fb.width();    
+
+    // worker function to render a single
+    // pixel of the camera
+    auto worker = [this, &vpw, &vph, &fb](
+        const size_t& i,
+        const size_t& j
+    ) {
+        // initialize a render args instance for the
+        // thread only once and reuse it for later executions
+        static thread_local RenderArgs args(rpp, bvh);
+        // add all the primary rays through
+        // the current pixel to the render args
+        build_pixel_rays(args, i, j, fb.width(), fb.height(), vpw, vph);
+        // render the pixel and reset the args
+        // to reuse them for the next pixel
+        render(args);
+        args.rays.clear();
+        // average the color over all rays
+        // that go through the current pixel
+        Vec3f c = Vec3f::zeros;
+        for (size_t k = 0; k < rpp; k++) {
+            RayContrib& contrib = args.contrib_buffer[k];
+            // reset contribution for the upcoming rays
+            c = c + contrib.color;
+            contrib = RayContrib();
+        }
+        c = c / (float)rpp;
+        // apply postprocessing including
+        // a simple approxiamtion of
+        // gamma correction filter
+        c = c.min(Vec3f::ones).max(Vec3f::zeros);
+        c = c.sqrt() * 255.0f;
+        // write the color to the framebuffer
+        fb.set_pixel(i, j, c[0], c[1], c[2]);
+    };
+
+    // create a threadpool to manage the workers
+    ThreadPool pool(std::thread::hardware_concurrency());
     // render all pixels
     for (size_t i = 0; i < fb.height(); i++) {
         for (size_t j = 0; j < fb.width(); j++) {
-            // add all the primary rays through
-            // the current pixel to the render args
-            build_pixel_rays(args, i, j, fb.width(), fb.height(), vpw, vph);
-            // render the pixel and reset the args
-            // to reuse them for the next pixel
-            render(args);
-            args.rays.clear();
-            // average the color over all rays
-            // that go through the current pixel
-            Vec3f c = Vec3f::zeros;
-            for (size_t k = 0; k < rpp; k++) {
-                RayContrib& contrib = args.contrib_buffer[k];
-                // reset contribution for the upcoming rays
-                c = c + contrib.color;
-                contrib = RayContrib();
-            }
-            c = c / (float)rpp;
-            // apply postprocessing including
-            // a simple approxiamtion of
-            // gamma correction filter
-            c = c.min(Vec3f::ones).max(Vec3f::zeros);
-            c = c.sqrt() * 255.0f;
-            // write the color to the framebuffer
-            fb.set_pixel(i, j, c[0], c[1], c[2]);
+            pool.enqueue(worker, i, j);
         }
     }
-    // free memory
-    delete[] args.contrib_buffer;
 }
 
 void Renderer::render(
