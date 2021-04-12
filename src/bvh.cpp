@@ -146,7 +146,7 @@ BVH::BVH(
         //  - the node is at maximum depth or
         //  - the minumum number of primitives would be 
         //    violated by splitting the node again
-        if ((i >= n_inner_nodes) || (d < min_size * 2)) {
+        if ((i >= n_inner_nodes) || (d < min_size * 4)) {
             // set the node of the tree to be a leaf node
             tree[i].is_leaf = true;
             tree[i].leaf_id = n_leaf_nodes++;
