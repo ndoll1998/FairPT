@@ -21,6 +21,10 @@ This implementation is by no means the fasted path tracer out there. It mainly s
 - ### SIMD instructions (SSE4)
   We heavily use SIMD instructions to reduce the number of cpu instructions. The most straight forward way of using SIMD is to parallelize vector operations. A more involved way is to cast a ray to mulitple primitives simultaneously. Both are implemented in the casting routine.
   
+- ### Multiprocessing
+  The work of rendering an image is evenly distributed over all cpu-cores. This is done by splitting the full image into smaller chunks which can be processed in parallel. For simplicity we consider these chunks to be single pixels. Note that rendering only one pixel still requires multiple primary rays and thus the performance gain of iterative ray casting and ray sorting is still active. 
+
+
 ## Hello World
   
 The API is designed to be easy to use. The following excerpt shows how to render the cornell box (from [`src/main.cpp`](src/main.cpp)):
