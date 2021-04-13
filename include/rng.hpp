@@ -1,8 +1,6 @@
 #ifndef H_RNG
 #define H_RNG
 
-#include <stdlib.h>
-
 namespace rng {
 
     class rng {
@@ -23,7 +21,7 @@ namespace rng {
 
     namespace { 
         rng _rng = rng(42); 
-        float randf(void) { return rand() / (float)RAND_MAX; return _rng.randf(); }
+        float randf(void) { return _rng.randf(); }
     }
 
 };
