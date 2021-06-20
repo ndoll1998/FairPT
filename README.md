@@ -8,7 +8,7 @@ A fairly optimized cpu-only path tracer written in pure C++.
 This implementation is by no means the fasted path tracer out there. It mainly serves an educational purpose. Nevertheless some effort was made to reduce the rendering time. In the following we list the optimization technics.
 
 - ### Iterative Ray Casting
-  Most path tracers are implemented in a recursive facion, i.e. one creates a primary ray, cast it to the scene and immediately recurses on the scatter ray created from it. Alternative to this simple approach we first generate multiple primary rays and cast all of them towards the scene. Then all secondary rays are created and casted in the next iteration. 
+  Most path tracers are implemented in a recursive fashion, i.e. one creates a primary ray, cast it to the scene and immediately recurses on the scatter ray created from it. Alternative to this simple approach we first generate multiple primary rays and cast all of them towards the scene. Then all secondary rays are created and casted in the next iteration. 
 
 - ### Bounding Volume Hierarchy (BVH)
   The bounding volume hierarchy is a well known acceleration structure. It is a rooted tree that organizes the primitives of a scene in such a way that a ray only needs to be casted to a subset of the primitives. The tree is constructed by recursively partitioning the set of primitives into k equally large subsets such that the variance of each subset is minimal. Thus each node of the tree is associated to a set of primitives. By casting a ray to the axis-aligned bounding box (AABB) that tightly contains all the primitives of a node, one can check if the ray misses the all the associated primitives. 
