@@ -5,7 +5,7 @@ A fairly optimized cpu-only path tracer written in pure C++.
 
 ## Fairly Optimized
 
-This implementation is by no means the fasted path tracer out there. It mainly serves an educational purpose. Nevertheless some effort was made to reduce the rendering time. In the following we list the optimization technics.
+This implementation is by no means the fastest path tracer out there. It mainly serves an educational purpose. Nevertheless some effort was made to reduce the rendering time. In the following we list the optimization technics.
 
 - ### Iterative Ray Casting
   Most path tracers are implemented in a recursive fashion, i.e. one creates a primary ray, cast it to the scene and immediately recurses on the scatter ray created from it. Alternative to this simple approach we first generate multiple primary rays and cast all of them towards the scene. Then all secondary rays are created and casted in the next iteration. 
