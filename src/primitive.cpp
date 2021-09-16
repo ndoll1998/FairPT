@@ -36,6 +36,79 @@ inline void sub(
 
 
 /*
+ *  Primitive Collection
+ */
+
+bool PrimitiveCollection::cast(
+    const Ray& ray,
+    HitRecord& record
+) const {
+    // build ray-packet from ray
+    Ray4 ray_packet = {
+        { Vec4f(ray.origin[0]), Vec4f(ray.origin[1]), Vec4f(ray.origin[2]) },
+        { Vec4f(ray.direction[0]), Vec4f(ray.direction[1]), Vec4f(ray.direction[2]) }
+    }; 
+    // values to mark the current best hit
+    size_t i;                   // index of the triangle with the current best hit
+    float t = record.t;         // distance to the current closest intersection
+    bool hit = record.is_valid; // did the ray hit a triangle yet
+    // check all packets in list
+    for (size_t k = 0; k < n_packets(); k++) {
+        // cast the ray against the primitive packet
+        Vec4f ts = cast_ray_packet(ray_packet, k);
+        // find the closest primitive in packet
+        // intersecting with the ray
+        for (size_t j = 0; j < 4; j++) {
+            // update the current best if both
+            //  - the ray intersects with the current primitive
+            //  - the intersection point is closer than the current best
+            if ((ts[j] > 0) && ((ts[j] < t) || (!hit))) { 
+                t = ts[j];
+                i = k * 4 + j;
+                hit = true; 
+            }
+        }
+    }
+    // check if the ray did hit any of the primitives
+    // in the collection
+    if (hit) {
+        // compute the point of intersection
+        Vec3f p = Vec3f(t).fmadd(ray.direction, ray.origin);
+        // update the hitrecord accordingly
+        record = { t, p, get_normal(i, p), ray.direction, true, get_material(i) };
+    }
+    // indicate that the ray indeed hit
+    // a primitive in the collection
+    return hit;
+}
+
+/*
+ *  Primitive List
+ */
+
+bool PrimitiveList::cast(
+    const Ray& ray,
+    HitRecord& record
+) const {
+    // values to mark the current best hit
+    bool hit = false;
+    HitRecord tmp;
+    // check all primitives in the list
+    for (const Primitive* prim : *this) {
+        // cast ray against the primitive
+        // and update the hitrecord if neccessary
+        if (prim->cast(ray, tmp) && (
+                (tmp.is_valid && !record.is_valid) ||
+                (tmp.is_valid && record.is_valid && (record.t > tmp.t))
+        )) { record = tmp; hit = true; }
+        // reset temporary hitrecord
+        tmp.is_valid = false;
+    }
+    return hit;
+}
+
+
+/*
  *  Triangle
  */
 
@@ -72,18 +145,32 @@ TriangleCollection::TriangleCollection(
     std::for_each(begin, end, [this](const Triangle& t) { push_back(t); });
 }
 
+Vec3f TriangleCollection::get_normal(
+    const size_t& i,    // index of the primitive
+    const Vec3f& p      // point on surface
+) const {
+    return Ns[i];
+}
 
-bool TriangleCollection::cast_ray_triangle(
+const mtl::Material* TriangleCollection::get_material(
+    const size_t& i
+) const {
+    return mtls[i];
+}
+
+Vec4f TriangleCollection::cast_ray_packet(
     const Ray4& ray,
-    const std::array<Vec4f, 3>& A,
-    const std::array<Vec4f, 3>& U,
-    const std::array<Vec4f, 3>& V,
-    float& t,   // distance to intersection point
-    size_t& j   // index of triangle with closest hit
-) {
+    const size_t& i
+) const {
     // Möller–Trumbore intersection algorithm
     // using simd instructions for parallel
     // processing of triangles rays at once
+    
+    // gather all information needed to cast the
+    // ray against the current triangle packet
+    const std::array<Vec4f, 3>& A = As[i];
+    const std::array<Vec4f, 3>& U = Us[i];
+    const std::array<Vec4f, 3>& V = Vs[i];
     
     // check if the ray is parallel to triangle 
     std::array<Vec4f, 3> h; cross(h, ray.direction, V); 
@@ -105,67 +192,9 @@ bool TriangleCollection::cast_ray_triangle(
     // and make sure it is in front of the ray
     Vec4f ts = dot(V, q) * f;
     Vec4f mask4 = (Vec4f::eps < ts);
-    // find the closest triangle
-    // intersecting with the ray
-    bool hit = false;
-    unsigned int mask = _mm_movemask_ps(mask1 & mask2 & mask3 & mask4);
-    for (size_t i = 0; i < 4; i++) {
-        // update the current best if both
-        //  - the ray intersects with the current triangle
-        //  - the intersection point is closer than the current best
-        if ((mask & 1u) && ((ts[i] < t) || (!hit))) { j = i; t = ts[i]; hit = true; }
-        // go to the next triangle
-        mask >>= 1;
-    }
-    // indicate that the ray intersected with at
-    // least one of the 
-    return hit;
-}
-
-bool TriangleCollection::cast(
-    const Ray& ray,
-    HitRecord& record
-) const {
-    // build ray-packet from ray
-    Ray4 ray_packet = {
-        { Vec4f(ray.origin[0]), Vec4f(ray.origin[1]), Vec4f(ray.origin[2]) },
-        { Vec4f(ray.direction[0]), Vec4f(ray.direction[1]), Vec4f(ray.direction[2]) }
-    }; 
-    // values to mark the current best hit
-    float t;    // distance to the current closest intersection
-    size_t i;   // index of the triangle with the current best hit
-    bool hit = false;   // did the ray hit a triangle yet
-    // check all triangle packets in list
-    for (size_t k = 0; k < A.size(); k++) {
-        // gather all information needed to cast the
-        // ray against the current triangle packet
-        const std::array<Vec4f, 3>& a = A[k];
-        const std::array<Vec4f, 3>& u = U[k];
-        const std::array<Vec4f, 3>& v = V[k];
-        // cast the ray against the traingle packet
-        float tmp_t = t; size_t tmp_j;
-        if (TriangleCollection::cast_ray_triangle(ray_packet, a, u, v, tmp_t, tmp_j)) {
-            // update the current best if neccessary
-            if ((t > tmp_t) || (!hit)) {
-                // keep the smaller distance and update the
-                // index to point to the triangle and packet
-                t = tmp_t;
-                i = tmp_j + k * 4;
-                hit = true;
-            }
-        }
-    }
-    // check if the ray did hit any of the triangles
-    // in the collection
-    if (hit) {
-        // compute the point of intersection
-        Vec3f p = Vec3f(t).fmadd(ray.direction, ray.origin);
-        // update the hitrecord accordingly
-        record = { t, p, N[i], ray.direction, true, mtls[i] };
-    }
-    // indicate that the ray indeed hit
-    // a triangle of the collection
-    return hit;
+    // mark invalids
+    ts = ts.take(-1 * Vec4f::ones, -1 * (mask1 & mask2 & mask3 & mask4));
+    return ts;
 }
 
 void TriangleCollection::push_back(const Triangle& T) 
@@ -179,26 +208,111 @@ void TriangleCollection::push_back(const Triangle& T)
     if (i == 0) {
         // add a new packet filled with
         // the same triangle
-        A.push_back({ Vec4f(T.A[0]), Vec4f(T.A[1]), Vec4f(T.A[2]) });
-        U.push_back({ Vec4f(u[0]), Vec4f(u[1]), Vec4f(u[2]) });
-        V.push_back({ Vec4f(v[0]), Vec4f(v[1]), Vec4f(v[2]) });
+        As.push_back({ Vec4f(T.A[0]), Vec4f(T.A[1]), Vec4f(T.A[2]) });
+        Us.push_back({ Vec4f(u[0]), Vec4f(u[1]), Vec4f(u[2]) });
+        Vs.push_back({ Vec4f(v[0]), Vec4f(v[1]), Vec4f(v[2]) });
     } else {
         // insert the triangle into the
         // currently last packet
-        A.back()[0][i] = T.A[0];
-        A.back()[1][i] = T.A[1];
-        A.back()[2][i] = T.A[2];
-        U.back()[0][i] = u[0];
-        U.back()[1][i] = u[1];
-        U.back()[2][i] = u[2];
-        V.back()[0][i] = v[0];
-        V.back()[1][i] = v[1];
-        V.back()[2][i] = v[2];
+        As.back()[0][i] = T.A[0];
+        As.back()[1][i] = T.A[1];
+        As.back()[2][i] = T.A[2];
+        Us.back()[0][i] = u[0];
+        Us.back()[1][i] = u[1];
+        Us.back()[2][i] = u[2];
+        Vs.back()[0][i] = v[0];
+        Vs.back()[1][i] = v[1];
+        Vs.back()[2][i] = v[2];
     }
     // push normal and material which are not
     // separated by components
-    N.push_back(u.cross(v).normalize());
+    Ns.push_back(u.cross(v).normalize());
     mtls.push_back(T.mtl);
 }
 
+size_t TriangleCollection::n_packets(void) const { return As.size(); }
+size_t TriangleCollection::n_primitives(void) const { return n_triangles; }
 
+/*
+ * Sphere
+ */
+
+Sphere::Sphere(
+    const Vec3f& center,
+    const float& radius,
+    const mtl::Material* mtl
+): center(center), radius(radius), mtl(mtl)
+{
+}
+
+AABB Sphere::bound(void) const {
+    return AABB(
+        center - radius,
+        center + radius
+    );
+}
+
+/*
+ * Sphere Collection
+ */
+
+Vec4f SphereCollection::cast_ray_packet(
+    const Ray4& ray,
+    const size_t& i
+) const {
+    // gather all properties of the primitives
+    // in the packet indicated by the given index
+    const std::array<Vec4f, 3>& C = centers[i];
+    const Vec4f& R = radii[i];
+
+    // compute the distriminant
+    std::array<Vec4f, 3> oc; sub(oc, ray.origin, C);
+    Vec4f a = dot(ray.direction, ray.direction);
+    Vec4f b = dot(oc, ray.direction);
+    Vec4f c = dot(oc, oc) - (R * R);
+    Vec4f d = (b * b) - (a * c);
+    // compute distances
+    Vec4f d_sqrt = d.sqrt();
+    Vec4f ts = (d_sqrt - b).max(-1*d_sqrt - b) / a;
+    // mark invalids
+    ts = ts.take(-1 * Vec4f::ones, d < Vec4f::zeros);
+    // return distances
+    return ts;
+}
+
+Vec3f SphereCollection::get_normal(
+    const size_t& i,    // index of the primitive
+    const Vec3f& p      // point on surface
+) const {
+    size_t j = i / 4, k = i % 4;
+    Vec3f center(centers[j][0][k], centers[j][1][k], centers[j][2][k]);
+    return (p - center) / radii[j][k];
+}
+
+const mtl::Material* SphereCollection::get_material(
+    const size_t& i
+) const {
+    return mtls[i];
+}
+
+void SphereCollection::push_back(const Sphere& S) {
+    // check if a new sphere packet is needed for
+    // for the given sphere
+    size_t i = n_spheres++ % 4;
+    if (i == 0) {
+        // add new packet filled with the given sphere
+        centers.push_back({ Vec4f(S.center[0]), Vec4f(S.center[1]), Vec4f(S.center[2]) });
+        radii.push_back(Vec4f(S.radius));
+    } else {
+        // insert sphere into existing packet
+        centers.back()[0][i] = S.center[0];
+        centers.back()[1][i] = S.center[1];
+        centers.back()[2][i] = S.center[2];
+        radii.back()[i] = S.radius;
+    } 
+    // push matrial to list
+    mtls.push_back(S.mtl);
+}
+
+size_t SphereCollection::n_packets(void) const { return centers.size(); }
+size_t SphereCollection::n_primitives(void) const { return n_spheres; }

@@ -82,9 +82,18 @@ int main(void) {
 
     // check the number of triangles
     cout << "#Triangles: " << cornell.size() << endl;
+    
+    BoundableList objects;
+    // insert mesh into boundable list
+    objects.insert(objects.begin(), cornell.begin(), cornell.end());
+
+    // insert sphere
+    objects.push_back(
+        new Sphere(Vec3f(0.7, 0.45, -0.3) * 20, 0.15 * 20, white)
+    );
 
     // build scene and renderer
-    Scene scene(cornell);
+    Scene scene(objects);
     Renderer renderer(scene, cam, 64, 10);
     FrameBuffer fb(200, 200);
 

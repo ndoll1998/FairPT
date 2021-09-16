@@ -14,16 +14,24 @@ void Scene::init(const BoundableList& objects)
         // create collections for the different
         // primitive types
         TriangleCollection* tris = new TriangleCollection;
+        SphereCollection* spheres = new SphereCollection;
         // sort all objects into their respective
         // primitive collection
         for (const Boundable* obj : objs) {
             // triangle
             if (const Triangle* t = dynamic_cast<const Triangle*>(obj)) {
                 tris->push_back(*t);
+            } else if (const Sphere* s = dynamic_cast<const Sphere*>(obj)) {
+                spheres->push_back(*s);
             }
         }
-        // push the primitive
-        _primitives.push_back(tris); 
+        // create a primitive list holding all collections
+        PrimitiveList* collections = new PrimitiveList; 
+        // push all non-empty collections
+        if (tris->n_primitives() > 0) { collections->push_back(tris); }
+        if (spheres->n_primitives() > 0) { collections->push_back(spheres); }
+        // push the collections to the primitive list of the scene
+        _primitives.push_back(collections);
     }
 }
 
