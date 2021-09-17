@@ -27,7 +27,7 @@ This implementation is by no means the fastest path tracer out there. It mainly 
 
 ## Hello World
   
-The API is designed to be easy to use. The following gives an practical overview on how to build and render a scene (from [`src/main.cpp`]()).
+The API is designed to be easy to use. The following gives an practical overview on how to build and render a scene (from [`src/main.cpp`](src/main.cpp)).
 
 Lets start by setting up a camera. This can be done as follows:
 ```C++
@@ -41,7 +41,7 @@ cam.fov(40.0f);             // set field of view in degrees
 cam.vp_dist(1.35f + 1e-3f); // set viewport distance
 ```
 
-Now that we have a camera ready, we can begin to create objects for the camera to see. But before that we need to define some materials. The path tracer supports a number of materials including `Lambertian`, `Dielectric`, `Metallic` and `Light` (see [`src/materials.hpp`](src/materials.hpp) for more information).
+Now that we have a camera ready, we can begin to create objects for the camera to see. But before that we need to define some materials. The path tracer supports a number of materials including `Lambertian`, `Dielectric`, `Metallic` and `Light` (see [`src/material.hpp`](src/material.hpp) for more information).
 ```C++
 // create all materials
 mtl::Material* light = new mtl::Light(new txr::Constant(Vec3f::ones * 3.0f));
