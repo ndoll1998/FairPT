@@ -27,56 +27,71 @@ This implementation is by no means the fastest path tracer out there. It mainly 
 
 ## Hello World
   
-The API is designed to be easy to use. The following excerpt shows how to render the cornell box (from [`src/main.cpp`](src/main.cpp)):
+The API is designed to be easy to use. The following gives an practical overview on how to build and render a scene (from [`src/main.cpp`]()).
 
+Lets start by setting up a camera. This can be done as follows:
 ```C++
-  // set camera
-  Camera cam(
-      Vec3f(0.5, 0.5, 1.35),
-      Vec3f(0, 0, -1),
-      Vec3f(0, 1, 0)
-  );
-  cam.fov(40.0f);
-  cam.vp_dist(1.35f + 1e-3f);
+// set camera
+Camera cam(
+  Vec3f(0.5, 0.5, 1.35),  // origin
+  Vec3f(0, 0, -1),        // view-direction
+  Vec3f(0, 1, 0)          // up-direction
+);
+cam.fov(40.0f);             // set field of view in degrees
+cam.vp_dist(1.35f + 1e-3f); // set viewport distance
+```
 
-  // create all materials
-  mtl::Material* red = new mtl::Lambertian(new txr::Constant(Vec3f(0.25f, 0.25f, 0.75f)));
-  mtl::Material* blue = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.25f, 0.25f)));
-  mtl::Material* white = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.75f, 0.75f)));
-  mtl::Material* light = new mtl::Light(new txr::Constant(Vec3f::ones * 3.0f));
+Now that we have a camera ready, we can begin to create objects for the camera to see. But before that we need to define some materials. The path tracer supports a number of materials including `Lambertian`, `Dielectric`, `Metallic` and `Light` (see [`src/materials.hpp`](src/materials.hpp) for more information).
+```C++
+// create all materials
+mtl::Material* light = new mtl::Light(new txr::Constant(Vec3f::ones * 3.0f));
+mtl::Material* red = new mtl::Lambertian(new txr::Constant(Vec3f(0.25f, 0.25f, 0.75f)));
+mtl::Material* blue = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.25f, 0.25f)));
+mtl::Material* white = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.75f, 0.75f)));
+mtl::Material* glass = new mtl::Dielectric(new txr::Constant(Vec3f(1.0f, 1.0f, 1.0f)), 1.5f);
+mtl::Material* mirror = new mtl::Metallic(new txr::Constant(Vec3f(1.0f, 1.0f, 1.0f)), 0.0f);
+```
 
-  // build the cornell box mesh
-  // a mesh is a collection of triangles with some extra functionality
-  Mesh cornell;
-  // light
-  cornell.push_back(new Triangle(Vec3f(0.2, 0.999, -0.2), Vec3f(0.8, 0.999, -0.2), Vec3f(0.2, 0.999, -0.8), light));
-  cornell.push_back(new Triangle(Vec3f(0.8, 0.999, -0.8), Vec3f(0.2, 0.999, -0.8), Vec3f(0.8, 0.999, -0.2), light));
-  // ceiling
-  cornell.push_back(new Triangle(Vec3f(0, 1, 0), Vec3f(0, 1, -1), Vec3f(1, 1, 0), white));
-  cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(1, 1, 0), Vec3f(0, 1, -1), white));
-  // floor
-  cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(1, 0, 0), Vec3f(0, 0, -1), white));
-  cornell.push_back(new Triangle(Vec3f(1, 0, -1), Vec3f(0, 0, -1), Vec3f(1, 0, 0), white));
-  // back
-  cornell.push_back(new Triangle(Vec3f(0, 0, -1), Vec3f(1, 0, -1), Vec3f(0, 1, -1), white));
-  cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(0, 1, -1), Vec3f(1, 0, -1), white));
-  // front
-  cornell.push_back(new Triangle(Vec3f(1, 1, 0), Vec3f(1, 0, 0), Vec3f(0, 1, 0), white));
-  cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(0, 1, 0), Vec3f(1, 0, 0), white));
-  // left
-  cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(0, 0, -1), Vec3f(0, 1, 0), red));
-  cornell.push_back(new Triangle(Vec3f(0, 1, -1), Vec3f(0, 1, 0), Vec3f(0, 0, -1), red));
-  // right
-  cornell.push_back(new Triangle(Vec3f(1, 0, 0), Vec3f(1, 1, 0), Vec3f(1, 0, -1), blue));
-  cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(1, 0, -1), Vec3f(1, 1, 0), blue));
-  // add two boxes to the scene
-  cornell.extend(Mesh::Parallelepiped(Vec3f(0.25, 0, -0.5), Vec3f(0.15, 0, -0.8), Vec3f(0.55, 0, -0.6), Vec3f(0.25, 0.6, -0.5), white));
-  cornell.extend(Mesh::Parallelepiped(Vec3f(0.8, 0, -0.15), Vec3f(0.5, 0, -0.25), Vec3f(0.9, 0, -0.45), Vec3f(0.8, 0.3, -0.15), white));
+Next we can actually create objects that are to be rendered. In genreal these objects are simple primitives (e.g. triangles, shperes). These are orgenized into a so called `BoundableList` (primitives need to be boundable for the BVH construction, thus `BoundableList`). The `Mesh` class also holds some helper functionality to easily create complex scenes from triangles only.
+```C++
+// create cornell box mesh
+// a mesh is a collection of triangles
+Mesh cornell = Mesh::CornellBox(white, red, blue, light);
+// add two boxes to the scene
+cornell.extend(Mesh::Parallelepiped(
+  Vec3f(0.25, 0, -0.5), Vec3f(0.15, 0, -0.8), Vec3f(0.55, 0, -0.6), Vec3f(0.25, 0.6, -0.5), white));
+cornell.extend(Mesh::Parallelepiped(
+  Vec3f(0.8, 0, -0.15), Vec3f(0.5, 0, -0.25), Vec3f(0.9, 0, -0.45), Vec3f(0.8, 0.3, -0.15), white));
 
-  // build scene and renderer
-  Scene scene(cornell);
-  Renderer renderer(scene, cam, 64, 10);
-  FrameBuffer fb(200, 200);
-  renderer.render(fb);
+// the mesh class also supports simple .obj files
+cornell.extend(
+    Mesh::load_obj("obj/suzanne.obj", white)
+    .fit_box(
+        Vec3f(0.1f, 0.1f, -0.4f),
+        Vec3f(0.9f, 0.9f, -1.0f)
+    )
+    .scale(20.0f)
+); 
 
+// add the triangles that build a mesh to a boundable list
+// note that this is only neccessary if one wants to add
+// primitives other than triangles to the scene
+BoundableList objects;
+objects.insert(objects.begin(), cornell.begin(), cornell.end());
+// now that we are not working with a mesh anymore we can
+// easily add spheres to the list
+objects.push_back(new Sphere(Vec3f(0.7, 0.45, -0.3) * 20, 0.15 * 20, glass));
+objects.push_back(new Sphere(Vec3f(0.3, 0.15, -0.3) * 20, 0.15 * 20, mirror));
+```
+
+Finally we can create and render the scene as follows:
+```C++
+// build scene and renderer
+Scene scene(cornell);
+Renderer renderer(scene, cam, 64, 10);
+// render the scene
+FrameBuffer fb(200, 200);
+renderer.render(fb);
+// save the framebuffer to a bmp file
+fb.save_to_bmp("path/to/file.bmp")
 ```
