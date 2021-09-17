@@ -23,78 +23,59 @@ int main(void) {
     cam.vp_dist(1.35f * 20 + 1e-3f);
 
     // create all materials
+    mtl::Material* light = new mtl::Light(new txr::Constant(Vec3f::ones * 3.0f));
     mtl::Material* red = new mtl::Lambertian(new txr::Constant(Vec3f(0.25f, 0.25f, 0.75f)));
     mtl::Material* blue = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.25f, 0.25f)));
     mtl::Material* white = new mtl::Lambertian(new txr::Constant(Vec3f(0.75f, 0.75f, 0.75f)));
-    mtl::Material* light = new mtl::Light(new txr::Constant(Vec3f::ones * 3.0f));
+    mtl::Material* glass = new mtl::Dielectric(new txr::Constant(Vec3f(1.0f, 1.0f, 1.0f)), 1.5f);
+    mtl::Material* mirror = new mtl::Metallic(new txr::Constant(Vec3f(1.0f, 1.0f, 1.0f)), 0.0f);
 
-    // build the cornell box mesh
-    Mesh cornell;
-    // light
-    cornell.push_back(new Triangle(Vec3f(0.2, 0.999, -0.2), Vec3f(0.8, 0.999, -0.2), Vec3f(0.2, 0.999, -0.8), light));
-    cornell.push_back(new Triangle(Vec3f(0.8, 0.999, -0.8), Vec3f(0.2, 0.999, -0.8), Vec3f(0.8, 0.999, -0.2), light));
-    // ceiling
-    cornell.push_back(new Triangle(Vec3f(0, 1, 0), Vec3f(0, 1, -1), Vec3f(1, 1, 0), white));
-    cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(1, 1, 0), Vec3f(0, 1, -1), white));
-    // floor
-    cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(1, 0, 0), Vec3f(0, 0, -1), white));
-    cornell.push_back(new Triangle(Vec3f(1, 0, -1), Vec3f(0, 0, -1), Vec3f(1, 0, 0), white));
-    // back
-    cornell.push_back(new Triangle(Vec3f(0, 0, -1), Vec3f(1, 0, -1), Vec3f(0, 1, -1), white));
-    cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(0, 1, -1), Vec3f(1, 0, -1), white));
-    // front
-    cornell.push_back(new Triangle(Vec3f(1, 1, 0), Vec3f(1, 0, 0), Vec3f(0, 1, 0), white));
-    cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(0, 1, 0), Vec3f(1, 0, 0), white));
-    // left
-    cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(0, 0, -1), Vec3f(0, 1, 0), red));
-    cornell.push_back(new Triangle(Vec3f(0, 1, -1), Vec3f(0, 1, 0), Vec3f(0, 0, -1), red));
-    // right
-    cornell.push_back(new Triangle(Vec3f(1, 0, 0), Vec3f(1, 1, 0), Vec3f(1, 0, -1), blue));
-    cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(1, 0, -1), Vec3f(1, 1, 0), blue));
+    // create cornell box mesh
+    Mesh cornell = Mesh::CornellBox(white, red, blue, light);
+
     // add two boxes to the scene
     cornell.extend(Mesh::Parallelepiped(Vec3f(0.25, 0, -0.5), Vec3f(0.15, 0, -0.8), Vec3f(0.55, 0, -0.6), Vec3f(0.25, 0.6, -0.5), white));
     cornell.extend(Mesh::Parallelepiped(Vec3f(0.8, 0, -0.15), Vec3f(0.5, 0, -0.25), Vec3f(0.9, 0, -0.45), Vec3f(0.8, 0.3, -0.15), white));
-    // scale up
-    cornell.scale(20.0f);
     
     /*
     // load suzanne from obj file
     cornell.extend(
-        Mesh::load_obj("obj/suzanne.obj", white)
+        Mesh::load_obj("obj/suzanne.obj", glass)
         .fit_box(
             Vec3f(0.1f, 0.1f, -0.4f),
             Vec3f(0.9f, 0.9f, -1.0f)
         )
         .scale(20.0f)
-    );
-
+    ); 
+    
     // load lucy from obj file
     cornell.extend(
         Mesh::load_obj("obj/lucy.obj", white)
         .swap_axes(1, 2)
         .flip_normals()
         .fit_box(
-            Vec3f(2.0f, 0.0f, -8.0f),
-            Vec3f(18.0f, 18.0f, -20.0f)
+            Vec3f(0.1f, 0.0f, -0.4f),
+            Vec3f(0.9f, 0.9f, -1.0f)
         )
     );
     */
-
+    
+    // scale up
+    cornell.scale(20.0f);
     // check the number of triangles
     cout << "#Triangles: " << cornell.size() << endl;
     
+    // convert mesh to boundable list to easily add
+    // primitives other than triangles (e.g. spheres)
     BoundableList objects;
-    // insert mesh into boundable list
     objects.insert(objects.begin(), cornell.begin(), cornell.end());
-
     // insert sphere
-    objects.push_back(
-        new Sphere(Vec3f(0.7, 0.45, -0.3) * 20, 0.15 * 20, white)
-    );
+    objects.push_back(new Sphere(Vec3f(0.7, 0.45, -0.3) * 20, 0.15 * 20, glass));
+    objects.push_back(new Sphere(Vec3f(0.3, 0.15, -0.3) * 20, 0.15 * 20, mirror));
 
     // build scene and renderer
     Scene scene(objects);
-    Renderer renderer(scene, cam, 64, 10);
+    Renderer renderer(scene, cam, 32, 10);
     FrameBuffer fb(200, 200);
 
     cout << "Rendering... " << flush;

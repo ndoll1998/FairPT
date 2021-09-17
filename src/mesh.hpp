@@ -21,6 +21,12 @@ public:
         const char* fpath,
         const mtl::Material* mat
     );
+    static Mesh CornellBox(
+        const mtl::Material* base_mtl,
+        const mtl::Material* left_mtl,
+        const mtl::Material* right_mtl,
+        const mtl::Material* light_mtl
+    );
     static Mesh Parallelogram(
         const Vec3f& A,
         const Vec3f& B,

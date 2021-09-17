@@ -69,6 +69,43 @@ Mesh Mesh::load_obj(
 }
 
 /*
+ *  Cornell Box
+ */
+
+Mesh Mesh::CornellBox(
+    const mtl::Material* base_mtl,
+    const mtl::Material* left_mtl,
+    const mtl::Material* right_mtl,
+    const mtl::Material* light_mtl
+) {
+    // build the cornell box mesh
+    Mesh cornell;
+    // light
+    cornell.push_back(new Triangle(Vec3f(0.2, 0.999, -0.2), Vec3f(0.8, 0.999, -0.2), Vec3f(0.2, 0.999, -0.8), light_mtl));
+    cornell.push_back(new Triangle(Vec3f(0.8, 0.999, -0.8), Vec3f(0.2, 0.999, -0.8), Vec3f(0.8, 0.999, -0.2), light_mtl));
+    // ceiling
+    cornell.push_back(new Triangle(Vec3f(0, 1, 0), Vec3f(0, 1, -1), Vec3f(1, 1, 0), base_mtl));
+    cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(1, 1, 0), Vec3f(0, 1, -1), base_mtl));
+    // floor
+    cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(1, 0, 0), Vec3f(0, 0, -1), base_mtl));
+    cornell.push_back(new Triangle(Vec3f(1, 0, -1), Vec3f(0, 0, -1), Vec3f(1, 0, 0), base_mtl));
+    // back
+    cornell.push_back(new Triangle(Vec3f(0, 0, -1), Vec3f(1, 0, -1), Vec3f(0, 1, -1), base_mtl));
+    cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(0, 1, -1), Vec3f(1, 0, -1), base_mtl));
+    // front
+    cornell.push_back(new Triangle(Vec3f(1, 1, 0), Vec3f(1, 0, 0), Vec3f(0, 1, 0), base_mtl));
+    cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(0, 1, 0), Vec3f(1, 0, 0), base_mtl));
+    // left
+    cornell.push_back(new Triangle(Vec3f(0, 0, 0), Vec3f(0, 0, -1), Vec3f(0, 1, 0), left_mtl));
+    cornell.push_back(new Triangle(Vec3f(0, 1, -1), Vec3f(0, 1, 0), Vec3f(0, 0, -1), left_mtl));
+    // right
+    cornell.push_back(new Triangle(Vec3f(1, 0, 0), Vec3f(1, 1, 0), Vec3f(1, 0, -1), right_mtl));
+    cornell.push_back(new Triangle(Vec3f(1, 1, -1), Vec3f(1, 0, -1), Vec3f(1, 1, 0), right_mtl));
+    
+    return cornell;
+}
+
+/*
  *  Parallelogram 2d and 3d
  */
 
