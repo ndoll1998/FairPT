@@ -273,7 +273,8 @@ Vec4f SphereCollection::cast_ray_packet(
     Vec4f d = (b * b) - (a * c);
     // compute distances
     Vec4f d_sqrt = d.sqrt();
-    Vec4f ts = (d_sqrt - b).max(-1*d_sqrt - b) / a;
+    Vec4f ts = -1 * d_sqrt - b;
+    ts = ts.take(d_sqrt - b, ts < Vec4f::zeros) / a;
     // mark invalids
     ts = ts.take(-1 * Vec4f::ones, d < Vec4f::zeros);
     // return distances
