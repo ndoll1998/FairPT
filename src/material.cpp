@@ -53,7 +53,7 @@ bool Material::scatter(
     Vec3f dt = h.v.dot(h.n);
     bool face_in = (dt[0] > 0.0f);
     // compute values needed for schlick
-    // approximationa and transparent materials
+    // approximation and transparent materials
     float nr = (face_in)? ior : 1.0f / ior;
     Vec3f c = (face_in)? dt * nr : -1 * dt;
     // compute reflectance probability
@@ -173,7 +173,7 @@ Dielectric::Dielectric(
     Material(
         att,        // attenuation
         nullptr,    // emittance
-        -1.0f,      // reflectance
+        0.0f,       // reflectance
         -1.0f,      // fuzzyness
         index,      // index of refraction
         true        // transparent
