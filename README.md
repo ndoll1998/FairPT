@@ -16,7 +16,7 @@ This implementation is by no means the fastest path tracer out there. It mainly 
   In our implementation the tree has degree k = 4. This way a ray can be casted against all four children of a node simultaneously using SIMD instuctions.
 
 - ### Ray Sorting
-  Ray Sorting is an open research field with the target of efficiently grouping corherent rays together. Very different from that we use a simple approach to group rays. A ray is sorted into multiple buckets corresponding to leaf nodes of the BVH. Afterwards the buckets are flushed, i.e. all rays in a bucket are casted to the associated primitives. Note that we use an itertive procedure to ray casting which allows us to first sort all rays into buckets before going on. The main advantage from this is that rays are reordered in memory to achive memory coalescing for the casting routine.
+  Ray Sorting is an open research field with the target of efficiently grouping coherent rays together. Very different from that we use a simple approach to group rays. A ray is sorted into multiple buckets corresponding to leaf nodes of the BVH. Afterwards the buckets are flushed, i.e. all rays in a bucket are casted to the associated primitives. Note that we use an itertive procedure to ray casting which allows us to first sort all rays into buckets before going on. The main advantage from this is that rays are reordered in memory to achive memory coalescing for the casting routine.
   
 - ### SIMD instructions (SSE4)
   We heavily use SIMD instructions to reduce the number of cpu instructions. The most straight forward way of using SIMD is to parallelize vector operations. A more involved way is to cast a ray to mulitple primitives simultaneously. Both are implemented in the casting routine.
